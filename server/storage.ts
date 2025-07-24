@@ -25,7 +25,7 @@ import {
   type InsertCollection
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, or, ilike } from "drizzle-orm";
 
 export interface IStorage {
   // Paper operations
@@ -56,136 +56,6 @@ export interface IStorage {
   addPaperToCollection(collectionId: number, paperId: string): Promise<void>;
 }
 
-export class MemStorage implements IStorage {
-  private papers: Map<string, Paper>;
-  private paperConnections: Map<number, PaperConnection>;
-  private searchQueries: Map<number, SearchQuery>;
-  private currentPaperId: number;
-  private currentConnectionId: number;
-  private currentQueryId: number;
-
-  constructor() {
-    this.papers = new Map();
-    this.paperConnections = new Map();
-    this.searchQueries = new Map();
-    this.currentPaperId = 1;
-    this.currentConnectionId = 1;
-    this.currentQueryId = 1;
-  }
-
-  async getPaper(paperId: string): Promise<Paper | undefined> {
-    return this.papers.get(paperId);
-  }
-
-  async createPaper(insertPaper: InsertPaper): Promise<Paper> {
-    const id = this.currentPaperId++;
-    const paper: Paper = { 
-      ...insertPaper, 
-      id,
-      createdAt: new Date(),
-      url: insertPaper.url || null,
-      doi: insertPaper.doi || null,
-      abstract: insertPaper.abstract || null,
-      year: insertPaper.year || null,
-      venue: insertPaper.venue || null
-    };
-    this.papers.set(insertPaper.paperId, paper);
-    return paper;
-  }
-
-  async updatePaper(paperId: string, updates: Partial<InsertPaper>): Promise<Paper | undefined> {
-    const existing = this.papers.get(paperId);
-    if (!existing) return undefined;
-    
-    const updated = { ...existing, ...updates } as Paper;
-    this.papers.set(paperId, updated);
-    return updated;
-  }
-
-  async searchPapers(query: string, filters: SearchFilters, offset: number = 0, limit: number = 20): Promise<PaperSearchResponse> {
-    const allPapers = Array.from(this.papers.values());
-    
-    let filteredPapers = allPapers.filter(paper => {
-      const matchesQuery = !query || 
-        paper.title.toLowerCase().includes(query.toLowerCase()) ||
-        paper.abstract?.toLowerCase().includes(query.toLowerCase()) ||
-        paper.authors.some(author => author.name.toLowerCase().includes(query.toLowerCase()));
-      
-      const matchesField = !filters.field || 
-        (paper.fieldsOfStudy && paper.fieldsOfStudy.some(field => field.toLowerCase().includes(filters.field!.toLowerCase())));
-      
-      const matchesYear = !filters.year || paper.year === filters.year;
-      
-      const matchesCitations = !filters.minCitations || 
-        (paper.citationCount ?? 0) >= filters.minCitations;
-      
-      return matchesQuery && matchesField && matchesYear && matchesCitations;
-    });
-
-    // Sort by citation count descending
-    filteredPapers.sort((a, b) => (b.citationCount ?? 0) - (a.citationCount ?? 0));
-    
-    const total = filteredPapers.length;
-    const paginatedPapers = filteredPapers.slice(offset, offset + limit);
-    
-    return {
-      papers: paginatedPapers,
-      total,
-      offset,
-      next: offset + limit < total ? offset + limit : undefined
-    };
-  }
-
-  async getPaperConnections(paperId: string): Promise<PaperConnection[]> {
-    return Array.from(this.paperConnections.values()).filter(
-      conn => conn.sourcePaperId === paperId || conn.targetPaperId === paperId
-    );
-  }
-
-  async createPaperConnection(insertConnection: InsertPaperConnection): Promise<PaperConnection> {
-    const id = this.currentConnectionId++;
-    const connection: PaperConnection = { 
-      ...insertConnection, 
-      id,
-      strength: insertConnection.strength || 1
-    };
-    this.paperConnections.set(id, connection);
-    return connection;
-  }
-
-  async getConnectedPapers(paperId: string): Promise<Paper[]> {
-    const connections = await this.getPaperConnections(paperId);
-    const connectedPaperIds = connections.map(conn => 
-      conn.sourcePaperId === paperId ? conn.targetPaperId : conn.sourcePaperId
-    );
-    
-    return connectedPaperIds
-      .map(id => this.papers.get(id))
-      .filter(paper => paper !== undefined) as Paper[];
-  }
-
-  async createSearchQuery(insertQuery: InsertSearchQuery): Promise<SearchQuery> {
-    const id = this.currentQueryId++;
-    const query: SearchQuery = { 
-      ...insertQuery, 
-      id,
-      createdAt: new Date(),
-      field: insertQuery.field || null,
-      year: insertQuery.year || null,
-      resultCount: insertQuery.resultCount || null
-    };
-    this.searchQueries.set(id, query);
-    return query;
-  }
-
-  async getRecentSearches(limit: number = 10): Promise<SearchQuery[]> {
-    const queries = Array.from(this.searchQueries.values());
-    return queries
-      .sort((a, b) => b.createdAt!.getTime() - a.createdAt!.getTime())
-      .slice(0, limit);
-  }
-}
-
 export class DatabaseStorage implements IStorage {
   async getPaper(paperId: string): Promise<Paper | undefined> {
     const [paper] = await db.select().from(papers).where(eq(papers.paperId, paperId));
@@ -193,7 +63,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPaper(insertPaper: InsertPaper): Promise<Paper> {
-    const [paper] = await db.insert(papers).values(insertPaper).returning();
+    const [paper] = await db.insert(papers).values([insertPaper]).returning();
     return paper;
   }
 
@@ -206,19 +76,29 @@ export class DatabaseStorage implements IStorage {
   }
 
   async searchPapers(query: string, filters: SearchFilters, offset: number = 0, limit: number = 20): Promise<PaperSearchResponse> {
-    // This would use the Semantic Scholar API in production
-    // For now, return empty results to demonstrate structure
+    // Simple database search - in production this would integrate with Semantic Scholar API
+    const searchResults = await db.select()
+      .from(papers)
+      .where(
+        or(
+          ilike(papers.title, `%${query}%`),
+          ilike(papers.abstract, `%${query}%`)
+        )
+      )
+      .limit(limit)
+      .offset(offset);
+
     return {
-      papers: [],
-      total: 0,
+      papers: searchResults,
+      total: searchResults.length,
       offset,
-      next: undefined
+      next: searchResults.length === limit ? offset + limit : undefined
     };
   }
 
   async getPaperConnections(paperId: string): Promise<PaperConnection[]> {
     return await db.select().from(paperConnections).where(
-      and(
+      or(
         eq(paperConnections.sourcePaperId, paperId),
         eq(paperConnections.targetPaperId, paperId)
       )
@@ -239,7 +119,7 @@ export class DatabaseStorage implements IStorage {
     if (connectedPaperIds.length === 0) return [];
     
     return await db.select().from(papers).where(
-      eq(papers.paperId, connectedPaperIds[0]) // Simplified for demo
+      or(...connectedPaperIds.map(id => eq(papers.paperId, id)))
     );
   }
 
@@ -255,6 +135,7 @@ export class DatabaseStorage implements IStorage {
         .orderBy(desc(searchQueries.createdAt))
         .limit(limit);
     }
+    
     return await db.select().from(searchQueries)
       .orderBy(desc(searchQueries.createdAt))
       .limit(limit);
@@ -273,7 +154,7 @@ export class DatabaseStorage implements IStorage {
   async getUserChatSessions(userId: number): Promise<ChatSession[]> {
     return await db.select().from(chatSessions)
       .where(eq(chatSessions.userId, userId))
-      .orderBy(desc(chatSessions.updatedAt));
+      .orderBy(desc(chatSessions.createdAt));
   }
 
   async addChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
@@ -295,14 +176,11 @@ export class DatabaseStorage implements IStorage {
   async getUserCollections(userId: number): Promise<Collection[]> {
     return await db.select().from(collections)
       .where(eq(collections.userId, userId))
-      .orderBy(desc(collections.updatedAt));
+      .orderBy(desc(collections.createdAt));
   }
 
   async addPaperToCollection(collectionId: number, paperId: string): Promise<void> {
-    await db.insert(collectionPapers).values({
-      collectionId,
-      paperId
-    });
+    await db.insert(collectionPapers).values({ collectionId, paperId });
   }
 }
 

@@ -84,8 +84,9 @@ Preferred communication style: Simple, everyday language.
 5. Users can explore connections and drill down into related papers
 
 ### Data Storage Strategy
-- **Primary Storage**: PostgreSQL for persistent data
-- **Fallback**: In-memory storage for development/testing
+- **Primary Storage**: PostgreSQL database with Drizzle ORM for all persistent data
+- **Database Tables**: Users, papers, chat sessions/messages, paper connections, search queries, collections
+- **Session Storage**: PostgreSQL-based sessions for authentication state
 - **Caching**: TanStack Query provides client-side caching with configurable stale times
 
 ## External Dependencies
@@ -118,9 +119,10 @@ Preferred communication style: Simple, everyday language.
 - **Database**: Production PostgreSQL with connection pooling
 
 ### Environment Configuration
-- **Database URL**: Required environment variable for database connection
-- **API Keys**: Optional Semantic Scholar API key for enhanced rate limits
-- **Session Security**: Secure session configuration for production
+- **Database URL**: PostgreSQL connection string for persistent data storage
+- **API Keys**: User-provided OpenAI API keys stored encrypted in database
+- **Session Security**: PostgreSQL-based session storage with secure configuration
+- **Optional**: Semantic Scholar API key for enhanced rate limits
 
 ### Scalability Considerations
 - **Database**: Serverless PostgreSQL scales automatically
