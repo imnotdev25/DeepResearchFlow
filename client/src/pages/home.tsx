@@ -1,93 +1,222 @@
 import { useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SearchPanel } from "@/components/search-panel";
 import { PapersList } from "@/components/papers-list";
 import { GraphVisualization } from "@/components/graph-visualization";
-import { PaperDetailsPanel } from "@/components/paper-details-panel";
-import { LoadingOverlay } from "@/components/loading-overlay";
-import { Settings, HelpCircle, ChartGantt } from "lucide-react";
+import { PaperDetails } from "@/components/paper-details";
+import { ChatInterface } from "@/components/chat-interface";
+import { Settings, LogOut, MessageSquare, Network, Search, BookOpen } from "lucide-react";
 import { type Paper } from "@shared/schema";
 
 export default function Home() {
+  const { user, logout } = useAuth();
+  const { toast } = useToast();
   const [selectedPaper, setSelectedPaper] = useState<Paper | null>(null);
-  const [showPaperDetails, setShowPaperDetails] = useState(false);
+  const [view, setView] = useState<"search" | "graph" | "chat">("search");
   const [searchResults, setSearchResults] = useState<Paper[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
 
   const handlePaperSelect = (paper: Paper) => {
     setSelectedPaper(paper);
-    setShowPaperDetails(true);
   };
 
-  const handleClosePaperDetails = () => {
-    setShowPaperDetails(false);
-    setSelectedPaper(null);
+  const handleVisualizePaper = (paper: Paper) => {
+    setSelectedPaper(paper);
+    setView("graph");
+  };
+
+  const handleChatWithPaper = (paper: Paper) => {
+    if (!user?.hasApiKey) {
+      toast({
+        title: "API Key Required",
+        description: "Please add your OpenAI API key in settings to use chat.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setSelectedPaper(paper);
+    setView("chat");
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      toast({
+        title: "Logged out",
+        description: "You have been successfully logged out.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to log out",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200 fixed top-0 left-0 right-0 z-50">
+      <header className="bg-white dark:bg-slate-800 shadow-sm border-b border-slate-200 dark:border-slate-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <ChartGantt className="text-white w-4 h-4" />
+                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                  <BookOpen className="text-white w-4 h-4" />
                 </div>
-                <h1 className="text-xl font-semibold text-gray-900">DeepResearchFlow</h1>
+                <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+                  DeepResearchFlow
+                </h1>
               </div>
             </div>
             
             <div className="flex items-center space-x-4">
-              <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors duration-200">
-                <Settings className="w-5 h-5" />
-              </button>
-              <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors duration-200">
-                <HelpCircle className="w-5 h-5" />
-              </button>
+              <span className="text-sm text-slate-600 dark:text-slate-400">
+                Welcome, {user?.username}
+              </span>
+              <Button variant="ghost" size="sm">
+                <Settings className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleLogout}>
+                <LogOut className="w-4 h-4" />
+              </Button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Main Layout */}
-      <div className="flex h-screen pt-16">
-        {/* Sidebar */}
-        <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
-          <SearchPanel 
-            onSearch={setSearchResults}
-            onSearching={setIsSearching}
-            searchQuery={searchQuery}
-            onSearchQueryChange={setSearchQuery}
-          />
-          <PapersList 
-            papers={searchResults} 
-            onPaperSelect={handlePaperSelect}
-            selectedPaper={selectedPaper}
-          />
-        </div>
+      {/* Main Content */}
+      <div className="container mx-auto px-4 py-6">
+        <Tabs value={view} onValueChange={(value) => setView(value as any)} className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="search" className="flex items-center gap-2">
+              <Search className="w-4 h-4" />
+              Search Papers
+            </TabsTrigger>
+            <TabsTrigger value="graph" className="flex items-center gap-2">
+              <Network className="w-4 h-4" />
+              Graph View
+            </TabsTrigger>
+            <TabsTrigger value="chat" className="flex items-center gap-2">
+              <MessageSquare className="w-4 h-4" />
+              Chat
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col">
-          <GraphVisualization 
-            selectedPaper={selectedPaper}
-            onPaperSelect={handlePaperSelect}
-          />
-        </div>
+          <TabsContent value="search" className="mt-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <SearchPanel 
+                  onSearchResults={setSearchResults}
+                  isSearching={isSearching}
+                  onSearchingChange={setIsSearching}
+                />
+                <div className="mt-6">
+                  <PapersList 
+                    papers={searchResults}
+                    onPaperSelect={handlePaperSelect}
+                    onVisualize={handleVisualizePaper}
+                    onChat={handleChatWithPaper}
+                  />
+                </div>
+              </div>
+              <div className="lg:col-span-1">
+                {selectedPaper && (
+                  <PaperDetails 
+                    paper={selectedPaper}
+                    onVisualize={() => handleVisualizePaper(selectedPaper)}
+                    onChat={() => handleChatWithPaper(selectedPaper)}
+                  />
+                )}
+              </div>
+            </div>
+          </TabsContent>
 
-        {/* Paper Details Panel */}
-        {showPaperDetails && selectedPaper && (
-          <PaperDetailsPanel 
-            paper={selectedPaper}
-            onClose={handleClosePaperDetails}
-            onPaperSelect={handlePaperSelect}
-          />
-        )}
+          <TabsContent value="graph" className="mt-6">
+            {selectedPaper ? (
+              <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                <div className="lg:col-span-3">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Citation Network</CardTitle>
+                      <CardDescription>
+                        Interactive visualization of {selectedPaper.title}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <GraphVisualization 
+                        paperId={selectedPaper.paperId}
+                        onNodeClick={handlePaperSelect}
+                      />
+                    </CardContent>
+                  </Card>
+                </div>
+                <div className="lg:col-span-1">
+                  <PaperDetails 
+                    paper={selectedPaper}
+                    onVisualize={() => handleVisualizePaper(selectedPaper)}
+                    onChat={() => handleChatWithPaper(selectedPaper)}
+                  />
+                </div>
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <Network className="w-12 h-12 mx-auto mb-4 text-slate-400" />
+                  <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2">
+                    No Paper Selected
+                  </h3>
+                  <p className="text-slate-600 dark:text-slate-400">
+                    Search for a paper and click "Visualize" to see its citation network.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          <TabsContent value="chat" className="mt-6">
+            {selectedPaper ? (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2">
+                  <ChatInterface 
+                    paper={selectedPaper}
+                    onClose={() => setView("search")}
+                  />
+                </div>
+                <div className="lg:col-span-1">
+                  <PaperDetails 
+                    paper={selectedPaper}
+                    onVisualize={() => handleVisualizePaper(selectedPaper)}
+                    onChat={() => handleChatWithPaper(selectedPaper)}
+                  />
+                </div>
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <MessageSquare className="w-12 h-12 mx-auto mb-4 text-slate-400" />
+                  <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2">
+                    No Paper Selected
+                  </h3>
+                  <p className="text-slate-600 dark:text-slate-400">
+                    Search for a paper and click "Chat" to start a conversation about it.
+                  </p>
+                  {!user?.hasApiKey && (
+                    <p className="text-orange-600 dark:text-orange-400 mt-2 text-sm">
+                      Note: You'll need to add your OpenAI API key in settings first.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
-
-      {/* Loading Overlay */}
-      {isSearching && <LoadingOverlay message="Searching for papers..." />}
     </div>
   );
 }

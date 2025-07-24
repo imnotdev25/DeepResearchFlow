@@ -1,13 +1,251 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPaperSchema, insertSearchQuerySchema, type SearchFilters } from "@shared/schema";
+import { insertPaperSchema, insertSearchQuerySchema, insertUserSchema, type SearchFilters, type User } from "@shared/schema";
 import { z } from "zod";
+import { getSession, requireAuth, createUser, getUserByEmail, getUserByUsername, getUserById, verifyPassword, updateUserApiKey } from "./auth";
+import { generatePaperChat, testApiKey } from "./openai";
 
 const SEMANTIC_SCHOLAR_API_KEY = process.env.SEMANTIC_SCHOLAR_API_KEY || process.env.S2_API_KEY;
 const SEMANTIC_SCHOLAR_BASE_URL = "https://api.semanticscholar.org/graph/v1";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Session middleware
+  app.use(getSession());
+  
+  // Auth routes
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const { email, username, password, openaiApiKey, openaiBaseUrl } = req.body;
+      
+      if (!email || !username || !password) {
+        return res.status(400).json({ error: "Email, username, and password are required" });
+      }
+
+      // Check if user already exists
+      const existingUserByEmail = await getUserByEmail(email);
+      if (existingUserByEmail) {
+        return res.status(400).json({ error: "Email already registered" });
+      }
+
+      const existingUserByUsername = await getUserByUsername(username);
+      if (existingUserByUsername) {
+        return res.status(400).json({ error: "Username already taken" });
+      }
+
+      // Test API key if provided
+      if (openaiApiKey) {
+        const isValidKey = await testApiKey(openaiApiKey, openaiBaseUrl);
+        if (!isValidKey) {
+          return res.status(400).json({ error: "Invalid OpenAI API key" });
+        }
+      }
+
+      const user = await createUser({ email, username, password, openaiApiKey, openaiBaseUrl });
+      req.session.userId = user.id;
+      
+      res.json({ 
+        user: { 
+          id: user.id, 
+          email: user.email, 
+          username: user.username,
+          hasApiKey: !!user.openaiApiKey 
+        } 
+      });
+    } catch (error) {
+      console.error('Registration error:', error);
+      res.status(500).json({ error: "Registration failed" });
+    }
+  });
+
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { login, password } = req.body;
+      
+      if (!login || !password) {
+        return res.status(400).json({ error: "Login and password are required" });
+      }
+
+      // Try to find user by email or username
+      let user = await getUserByEmail(login);
+      if (!user) {
+        user = await getUserByUsername(login);
+      }
+
+      if (!user || !await verifyPassword(password, user.passwordHash)) {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+
+      req.session.userId = user.id;
+      res.json({ 
+        user: { 
+          id: user.id, 
+          email: user.email, 
+          username: user.username,
+          hasApiKey: !!user.openaiApiKey 
+        } 
+      });
+    } catch (error) {
+      console.error('Login error:', error);
+      res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy(() => {
+      res.json({ success: true });
+    });
+  });
+
+  app.get("/api/auth/me", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      const user = await getUserById(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      res.json({ 
+        user: { 
+          id: user.id, 
+          email: user.email, 
+          username: user.username,
+          hasApiKey: !!user.openaiApiKey 
+        } 
+      });
+    } catch (error) {
+      console.error('Get user error:', error);
+      res.status(500).json({ error: "Failed to get user" });
+    }
+  });
+
+  app.post("/api/auth/api-key", requireAuth, async (req, res) => {
+    try {
+      const { apiKey, baseUrl } = req.body;
+      const userId = req.session.userId;
+      
+      if (!apiKey) {
+        return res.status(400).json({ error: "API key is required" });
+      }
+
+      const isValid = await testApiKey(apiKey, baseUrl);
+      if (!isValid) {
+        return res.status(400).json({ error: "Invalid API key" });
+      }
+
+      await updateUserApiKey(userId, apiKey, baseUrl);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Update API key error:', error);
+      res.status(500).json({ error: "Failed to update API key" });
+    }
+  });
+
+  // Chat routes
+  app.post("/api/chat/session", requireAuth, async (req, res) => {
+    try {
+      const { paperId, title } = req.body;
+      const userId = req.session.userId;
+      
+      if (!paperId || !title) {
+        return res.status(400).json({ error: "Paper ID and title are required" });
+      }
+
+      const session = await storage.createChatSession({
+        userId,
+        paperId,
+        title
+      });
+      
+      res.json({ session });
+    } catch (error) {
+      console.error('Create chat session error:', error);
+      res.status(500).json({ error: "Failed to create chat session" });
+    }
+  });
+
+  app.get("/api/chat/sessions", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      const sessions = await storage.getUserChatSessions(userId);
+      res.json({ sessions });
+    } catch (error) {
+      console.error('Get chat sessions error:', error);
+      res.status(500).json({ error: "Failed to get chat sessions" });
+    }
+  });
+
+  app.get("/api/chat/session/:sessionId/messages", requireAuth, async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.sessionId);
+      const userId = req.session.userId;
+      
+      // Verify session belongs to user
+      const session = await storage.getChatSession(sessionId);
+      if (!session || session.userId !== userId) {
+        return res.status(404).json({ error: "Chat session not found" });
+      }
+      
+      const messages = await storage.getChatMessages(sessionId);
+      res.json({ messages });
+    } catch (error) {
+      console.error('Get chat messages error:', error);
+      res.status(500).json({ error: "Failed to get chat messages" });
+    }
+  });
+
+  app.post("/api/chat/session/:sessionId/message", requireAuth, async (req, res) => {
+    try {
+      const sessionId = parseInt(req.params.sessionId);
+      const userId = req.session.userId;
+      const { content } = req.body;
+      
+      if (!content) {
+        return res.status(400).json({ error: "Message content is required" });
+      }
+
+      // Verify session belongs to user
+      const session = await storage.getChatSession(sessionId);
+      if (!session || session.userId !== userId) {
+        return res.status(404).json({ error: "Chat session not found" });
+      }
+
+      // Get paper details
+      const paper = await storage.getPaper(session.paperId);
+      if (!paper) {
+        return res.status(404).json({ error: "Paper not found" });
+      }
+
+      // Save user message
+      await storage.addChatMessage({
+        sessionId,
+        role: 'user',
+        content
+      });
+
+      // Get conversation history
+      const messages = await storage.getChatMessages(sessionId);
+      const conversationHistory = messages.map(msg => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content
+      }));
+
+      // Generate AI response
+      const assistantResponse = await generatePaperChat(userId, paper, conversationHistory);
+      
+      // Save assistant message
+      const assistantMessage = await storage.addChatMessage({
+        sessionId,
+        role: 'assistant',
+        content: assistantResponse
+      });
+
+      res.json({ message: assistantMessage });
+    } catch (error) {
+      console.error('Send chat message error:', error);
+      res.status(500).json({ error: error.message || "Failed to send message" });
+    }
+  });
   
   // Search papers endpoint
   app.post("/api/papers/search", async (req, res) => {
