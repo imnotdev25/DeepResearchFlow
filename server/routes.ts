@@ -100,20 +100,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/auth/me", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
       const user = await getUserById(userId);
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
       
       res.json({ 
-        user: { 
-          id: user.id, 
-          email: user.email, 
-          username: user.username,
-          hasApiKey: !!user.openaiApiKey 
-        } 
+        id: user.id, 
+        email: user.email, 
+        username: user.username,
+        hasApiKey: !!user.openaiApiKey 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get user error:', error);
       res.status(500).json({ error: "Failed to get user" });
     }
@@ -133,6 +134,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid API key" });
       }
 
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
       await updateUserApiKey(userId, apiKey, baseUrl);
       res.json({ success: true });
     } catch (error) {
@@ -151,6 +155,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Paper ID and title are required" });
       }
 
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
       const session = await storage.createChatSession({
         userId,
         paperId,
@@ -167,6 +174,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/chat/sessions", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
       const sessions = await storage.getUserChatSessions(userId);
       res.json({ sessions });
     } catch (error) {
@@ -241,7 +251,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json({ message: assistantMessage });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Send chat message error:', error);
       res.status(500).json({ error: error.message || "Failed to send message" });
     }
