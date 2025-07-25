@@ -14,6 +14,18 @@ export function useAuth() {
   const { data: user, isLoading } = useQuery({
     queryKey: ["/api/auth/me"],
     retry: false,
+    queryFn: async () => {
+      const response = await fetch("/api/auth/me", {
+        credentials: "include",
+      });
+      if (response.status === 401) {
+        return null; // User not authenticated
+      }
+      if (!response.ok) {
+        throw new Error("Failed to fetch user");
+      }
+      return response.json();
+    },
   });
 
   const loginMutation = useMutation({
