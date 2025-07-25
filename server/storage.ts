@@ -43,6 +43,12 @@ export interface IStorage {
   createSearchQuery(query: InsertSearchQuery): Promise<SearchQuery>;
   getRecentSearches(userId?: number, limit?: number): Promise<SearchQuery[]>;
   
+  // User operations
+  getUserByEmail(email: string): Promise<User | undefined>;
+  getUserById(id: number): Promise<User | undefined>;
+  createUser(userData: InsertUser): Promise<User>;
+  updateUserApiKey(userId: number, apiKey: string, baseUrl?: string): Promise<void>;
+  
   // Chat operations
   createChatSession(session: InsertChatSession): Promise<ChatSession>;
   getChatSession(sessionId: number): Promise<ChatSession | undefined>;
@@ -63,13 +69,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPaper(insertPaper: InsertPaper): Promise<Paper> {
-    const [paper] = await db.insert(papers).values([insertPaper]).returning();
+    const [paper] = await db.insert(papers).values([insertPaper as any]).returning();
     return paper;
   }
 
   async updatePaper(paperId: string, updates: Partial<InsertPaper>): Promise<Paper | undefined> {
     const [paper] = await db.update(papers)
-      .set(updates)
+      .set(updates as any)
       .where(eq(papers.paperId, paperId))
       .returning();
     return paper;
@@ -181,6 +187,31 @@ export class DatabaseStorage implements IStorage {
 
   async addPaperToCollection(collectionId: number, paperId: string): Promise<void> {
     await db.insert(collectionPapers).values({ collectionId, paperId });
+  }
+
+  // User operations
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
+  async getUserById(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async createUser(userData: InsertUser): Promise<User> {
+    const [user] = await db.insert(users).values(userData).returning();
+    return user;
+  }
+
+  async updateUserApiKey(userId: number, apiKey: string, baseUrl?: string): Promise<void> {
+    await db.update(users)
+      .set({ 
+        openaiApiKey: apiKey,
+        openaiBaseUrl: baseUrl || "https://api.openai.com/v1"
+      })
+      .where(eq(users.id, userId));
   }
 }
 
