@@ -34,8 +34,6 @@ export default function AuthPage() {
     username: "",
     password: "",
     confirmPassword: "",
-    openaiApiKey: "",
-    openaiBaseUrl: "https://api.openai.com/v1",
   });
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -77,17 +75,11 @@ export default function AuthPage() {
     }
 
     try {
-      const userData = {
+      await register({
         email: registerData.email,
         username: registerData.username,
         password: registerData.password,
-        ...(registerData.openaiApiKey && {
-          openaiApiKey: registerData.openaiApiKey,
-          openaiBaseUrl: registerData.openaiBaseUrl,
-        }),
-      };
-      
-      await register(userData);
+      });
       toast({
         title: "Success",
         description: "Account created successfully!",
@@ -257,45 +249,7 @@ export default function AuthPage() {
                       />
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="api-key">OpenAI API Key (Optional)</Label>
-                    <div className="relative">
-                      <KeyRound className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                      <Input
-                        id="api-key"
-                        type={showApiKey ? "text" : "password"}
-                        placeholder="sk-..."
-                        className="pl-10 pr-10"
-                        value={registerData.openaiApiKey}
-                        onChange={(e) => setRegisterData({ ...registerData, openaiApiKey: e.target.value })}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-1 top-1 h-8 w-8 p-0"
-                        onClick={() => setShowApiKey(!showApiKey)}
-                      >
-                        {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      Required for chat functionality. You can add this later in settings.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="base-url">API Base URL (Optional)</Label>
-                    <Input
-                      id="base-url"
-                      type="url"
-                      placeholder="https://api.openai.com/v1"
-                      value={registerData.openaiBaseUrl}
-                      onChange={(e) => setRegisterData({ ...registerData, openaiBaseUrl: e.target.value })}
-                    />
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      For OpenAI-compatible APIs like Anthropic Claude, etc.
-                    </p>
-                  </div>
+
                 </CardContent>
                 <CardFooter>
                   <Button type="submit" className="w-full" disabled={isRegisterLoading}>

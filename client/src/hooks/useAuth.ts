@@ -51,8 +51,6 @@ export function useAuth() {
       email: string;
       username: string;
       password: string;
-      openaiApiKey?: string;
-      openaiBaseUrl?: string;
     }) => {
       const response = await fetch("/api/auth/register", {
         method: "POST",

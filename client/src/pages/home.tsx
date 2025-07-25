@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,6 +16,7 @@ import { type Paper } from "@shared/schema";
 export default function Home() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [selectedPaper, setSelectedPaper] = useState<Paper | null>(null);
   const [view, setView] = useState<"search" | "graph" | "chat">("search");
   const [searchResults, setSearchResults] = useState<Paper[]>([]);
@@ -79,7 +81,7 @@ export default function Home() {
               <span className="text-sm text-slate-600 dark:text-slate-400">
                 Welcome, {user?.username}
               </span>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" onClick={() => navigate("/settings")}>
                 <Settings className="w-4 h-4" />
               </Button>
               <Button variant="ghost" size="sm" onClick={handleLogout}>
