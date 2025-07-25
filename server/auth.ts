@@ -45,8 +45,9 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: false, // Set to false for development
       maxAge: sessionTtl,
+      sameSite: 'lax'
     },
   });
 }
@@ -116,6 +117,12 @@ export async function getUserApiKey(userId: number): Promise<{ apiKey: string; b
 }
 
 export function requireAuth(req: any, res: any, next: any) {
+  console.log('RequireAuth check:', { 
+    sessionExists: !!req.session, 
+    userId: req.session?.userId,
+    sessionId: req.session?.id 
+  });
+  
   if (req.session?.userId) {
     next();
   } else {

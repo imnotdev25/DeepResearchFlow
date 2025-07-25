@@ -44,13 +44,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await createUser({ email, username, password, openaiApiKey, openaiBaseUrl });
       req.session.userId = user.id;
       
-      res.json({ 
-        user: { 
-          id: user.id, 
-          email: user.email, 
-          username: user.username,
-          hasApiKey: !!user.openaiApiKey 
-        } 
+      // Save session before sending response
+      req.session.save((err: any) => {
+        if (err) {
+          console.error('Session save error:', err);
+          return res.status(500).json({ error: "Session save failed" });
+        }
+        
+        console.log('Registration successful, session saved:', { userId: user.id, sessionId: req.session.id });
+        res.json({ 
+          user: { 
+            id: user.id, 
+            email: user.email, 
+            username: user.username,
+            hasApiKey: !!user.openaiApiKey 
+          } 
+        });
       });
     } catch (error) {
       console.error('Registration error:', error);
@@ -77,13 +86,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       req.session.userId = user.id;
-      res.json({ 
-        user: { 
-          id: user.id, 
-          email: user.email, 
-          username: user.username,
-          hasApiKey: !!user.openaiApiKey 
-        } 
+      
+      // Save session before sending response
+      req.session.save((err: any) => {
+        if (err) {
+          console.error('Session save error:', err);
+          return res.status(500).json({ error: "Session save failed" });
+        }
+        
+        console.log('Login successful, session saved:', { userId: user.id, sessionId: req.session.id });
+        res.json({ 
+          user: { 
+            id: user.id, 
+            email: user.email, 
+            username: user.username,
+            hasApiKey: !!user.openaiApiKey 
+          } 
+        });
       });
     } catch (error) {
       console.error('Login error:', error);
