@@ -24,21 +24,21 @@ function Router() {
     );
   }
 
+  if (!isAuthenticated) {
+    return (
+      <Switch>
+        <Route path="/auth" component={AuthPage} />
+        <Route path="/" component={LandingPage} />
+        <Route component={() => <LandingPage />} />
+      </Switch>
+    );
+  }
+
   return (
     <Switch>
-      {!isAuthenticated ? (
-        <>
-          <Route path="/auth" component={AuthPage} />
-          <Route path="/" component={LandingPage} />
-          <Route component={LandingPage} />
-        </>
-      ) : (
-        <>
-          <Route path="/" component={Home} />
-          <Route path="/settings" component={SettingsPage} />
-          <Route component={NotFound} />
-        </>
-      )}
+      <Route path="/" component={Home} />
+      <Route path="/settings" component={SettingsPage} />
+      <Route component={NotFound} />
     </Switch>
   );
 }
