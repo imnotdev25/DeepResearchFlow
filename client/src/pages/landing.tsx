@@ -1,9 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Search, Network, MessageSquare, BookOpen, Zap, Shield } from "lucide-react";
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 
 export default function LandingPage() {
+  const [, navigate] = useLocation();
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
       {/* Header */}
@@ -15,9 +17,7 @@ export default function LandingPage() {
               DeepResearchFlow
             </h1>
           </div>
-          <Link href="/auth">
-            <Button>Get Started</Button>
-          </Link>
+          <Button onClick={() => navigate("/auth")}>Get Started</Button>
         </div>
       </header>
 
@@ -32,11 +32,9 @@ export default function LandingPage() {
             through AI-powered conversations. Transform how you discover and understand academic literature.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/auth">
-              <Button size="lg" className="text-lg px-8 py-3">
-                Start Exploring
-              </Button>
-            </Link>
+            <Button size="lg" className="text-lg px-8 py-3" onClick={() => navigate("/auth")}>
+              Start Exploring
+            </Button>
             <Button size="lg" variant="outline" className="text-lg px-8 py-3">
               Learn More
             </Button>
@@ -128,11 +126,9 @@ export default function LandingPage() {
             Join researchers worldwide who are discovering, exploring, and understanding 
             academic literature in revolutionary new ways.
           </p>
-          <Link href="/auth">
-            <Button size="lg" className="text-lg px-12 py-4">
-              Get Started Free
-            </Button>
-          </Link>
+          <Button size="lg" className="text-lg px-12 py-4" onClick={() => navigate("/auth")}>
+            Get Started Free
+          </Button>
         </div>
       </section>
 
