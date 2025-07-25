@@ -18,11 +18,12 @@ Preferred communication style: Simple, everyday language.
 
 ## Recent Changes (January 2025)
 
-✓ Built complete DeepResearchFlow application
-✓ Fixed SelectItem component validation error
-✓ Resolved all TypeScript compilation issues  
-✓ Added proper type annotations for D3.js components
-✓ Implemented working search, visualization, and details functionality
+✓ Built complete DeepResearchFlow application with PostgreSQL database
+✓ Fixed infinite authentication loop issues
+✓ Implemented proper authentication routing and redirects
+✓ Removed API key requirement from signup - moved to settings page
+✓ Added dedicated settings page for secure API key management
+✓ Fixed landing page routing to not show on signup page
 
 ## System Architecture
 
