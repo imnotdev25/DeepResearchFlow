@@ -437,7 +437,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      res.json(citations);
+      // Extract citing papers from the response
+      const citingPapers = citations.map((citation: any) => citation.citingPaper).filter(Boolean);
+      res.json({ papers: citingPapers });
     } catch (error) {
       console.error('Get citations error:', error);
       res.status(500).json({ error: "Failed to get citations" });
@@ -502,7 +504,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      res.json(references);
+      // Extract cited papers from the response
+      const citedPapers = references.map((reference: any) => reference.citedPaper).filter(Boolean);
+      res.json({ papers: citedPapers });
     } catch (error) {
       console.error('Get references error:', error);
       res.status(500).json({ error: "Failed to get references" });
