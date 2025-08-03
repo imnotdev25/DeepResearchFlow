@@ -29,7 +29,7 @@ function decrypt(text: string): string {
 }
 
 export function getSession() {
-  const sessionTtl = 7 * 24 * 60 * 60; // 1 week in seconds (not milliseconds for pg-simple)
+  const sessionTtl = 7 * 24 * 60 * 60; // 1 week in seconds
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
     conString: process.env.DATABASE_URL,
@@ -39,19 +39,24 @@ export function getSession() {
     schemaName: "public"
   });
   
+  // Add error handling for session store
+  sessionStore.on('error', (err: any) => {
+    console.error('Session store error:', err);
+  });
+  
   return session({
     secret: SESSION_SECRET,
     store: sessionStore,
-    resave: false,
+    resave: true, // Force session save on every request
     saveUninitialized: false,
-    rolling: true, // Reset maxAge on every request
+    rolling: false, // Don't reset maxAge on every request
     cookie: {
       httpOnly: true,
       secure: false, // Set to false for development
       maxAge: sessionTtl * 1000, // maxAge expects milliseconds
       sameSite: 'lax'
     },
-    name: 'connect.sid' // Standard session name
+    name: 'sessionId' // Use a different name to avoid conflicts
   });
 }
 

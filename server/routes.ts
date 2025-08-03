@@ -13,6 +13,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Session middleware
   app.use(getSession());
   
+  // Session debugging middleware
+  app.use((req: any, res, next) => {
+    console.log('Session middleware debug:', {
+      sessionId: req.session?.id,
+      userId: req.session?.userId,
+      url: req.url,
+      method: req.method,
+      cookieHeader: req.headers.cookie
+    });
+    next();
+  });
+  
   // Auth routes
   app.post("/api/auth/register", async (req, res) => {
     try {
