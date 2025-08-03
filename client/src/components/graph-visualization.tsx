@@ -8,6 +8,8 @@ import * as d3 from "d3";
 interface GraphVisualizationProps {
   paperId: string;
   onNodeClick: (paper: Paper) => void;
+  maxCitations?: number;
+  maxReferences?: number;
 }
 
 interface GraphNode extends d3.SimulationNodeDatum {
@@ -23,7 +25,12 @@ interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
   type: 'citation' | 'reference';
 }
 
-export function GraphVisualization({ paperId, onNodeClick }: GraphVisualizationProps) {
+export function GraphVisualization({ 
+  paperId, 
+  onNodeClick, 
+  maxCitations = 5, 
+  maxReferences = 5 
+}: GraphVisualizationProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,17 +66,24 @@ export function GraphVisualization({ paperId, onNodeClick }: GraphVisualizationP
         
         const links: GraphLink[] = [];
 
-        // Add citation nodes and links
-        citations.papers?.slice(0, 5).forEach((paper: Paper) => {
-          nodes.push({ id: paper.paperId, paper });
-          links.push({ source: paper.paperId, target: mainPaper.paperId, type: 'citation' });
+        // Add citation nodes and links (papers that cite this one)
+        citations.papers?.slice(0, maxCitations).forEach((paper: Paper) => {
+          if (paper && paper.paperId) {
+            nodes.push({ id: paper.paperId, paper });
+            links.push({ source: paper.paperId, target: mainPaper.paperId, type: 'citation' });
+          }
         });
 
-        // Add reference nodes and links
-        references.papers?.slice(0, 5).forEach((paper: Paper) => {
-          nodes.push({ id: paper.paperId, paper });
-          links.push({ source: mainPaper.paperId, target: paper.paperId, type: 'reference' });
+        // Add reference nodes and links (papers this one references)
+        references.papers?.slice(0, maxReferences).forEach((paper: Paper) => {
+          if (paper && paper.paperId) {
+            nodes.push({ id: paper.paperId, paper });
+            links.push({ source: mainPaper.paperId, target: paper.paperId, type: 'reference' });
+          }
         });
+
+        console.log(`Graph data: ${nodes.length} nodes, ${links.length} links`);
+        console.log('Citations:', citations.papers?.length || 0, 'References:', references.papers?.length || 0);
 
         setGraphData({ nodes, links });
       } catch (err) {
@@ -80,7 +94,7 @@ export function GraphVisualization({ paperId, onNodeClick }: GraphVisualizationP
     };
 
     fetchCitationData();
-  }, [paperId]);
+  }, [paperId, maxCitations, maxReferences]);
 
   // Create D3.js visualization
   useEffect(() => {
@@ -292,7 +306,7 @@ export function GraphVisualization({ paperId, onNodeClick }: GraphVisualizationP
 
       {/* Graph Info */}
       <div className="mt-4 text-sm text-slate-600 dark:text-slate-400 text-center">
-        Interactive citation network visualization
+        Interactive citation network (showing top {maxCitations} citations, {maxReferences} references)
         <br />
         <span className="text-blue-600">Blue lines:</span> References • <span className="text-red-600">Red lines:</span> Citations • <span className="font-medium">Drag nodes</span> to explore
       </div>

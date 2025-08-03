@@ -154,6 +154,8 @@ export default function Home() {
                       <GraphVisualization 
                         paperId={selectedPaper.paperId}
                         onNodeClick={handlePaperSelect}
+                        maxCitations={5}
+                        maxReferences={5}
                       />
                     </CardContent>
                   </Card>
