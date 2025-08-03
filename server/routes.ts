@@ -350,6 +350,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             citationCount: paperData.citationCount || 0,
             referenceCount: paperData.referenceCount || 0,
             url: paperData.url,
+            doi: paperData.doi,
             fieldsOfStudy: paperData.fieldsOfStudy || [],
             keywords: []
           });
