@@ -58,7 +58,7 @@ export function PaperDetailsPanel({ paper, onClose, onPaperSelect }: PaperDetail
               {paper.title}
             </h4>
             <p className="text-sm text-gray-600">
-              {paper.authors.map(author => author.name).join(", ")}
+              {paper.authors.map(author => typeof author === 'string' ? author : author.name).join(", ")}
             </p>
           </div>
           

@@ -70,7 +70,7 @@ export function PapersList({ papers, onPaperSelect, onVisualize, onChat }: Paper
                 )}
                 {paper.authors && paper.authors.length > 0 && (
                   <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-                    <strong>Authors:</strong> {paper.authors.slice(0, 3).join(", ")}
+                    <strong>Authors:</strong> {paper.authors.slice(0, 3).map(author => typeof author === 'string' ? author : author.name).join(", ")}
                     {paper.authors.length > 3 && ` +${paper.authors.length - 3} more`}
                   </p>
                 )}

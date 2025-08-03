@@ -60,7 +60,7 @@ export function PaperDetails({ paper, onVisualize, onChat }: PaperDetailsProps) 
             <div className="space-y-1">
               {paper.authors.slice(0, 5).map((author, index) => (
                 <p key={index} className="text-sm text-slate-600 dark:text-slate-400">
-                  {author}
+                  {typeof author === 'string' ? author : author.name}
                 </p>
               ))}
               {paper.authors.length > 5 && (
@@ -85,7 +85,7 @@ export function PaperDetails({ paper, onVisualize, onChat }: PaperDetailsProps) 
             <Button 
               variant="outline" 
               className="w-full flex items-center gap-2"
-              onClick={() => window.open(paper.url, '_blank')}
+              onClick={() => window.open(paper.url || '', '_blank')}
             >
               <ExternalLink className="w-4 h-4" />
               View Original Paper
