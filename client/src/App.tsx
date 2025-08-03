@@ -11,7 +11,9 @@ import SettingsPage from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
 function Router() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
+
+  console.log('Router state:', { isAuthenticated, isLoading, hasUser: !!user });
 
   if (isLoading) {
     return (

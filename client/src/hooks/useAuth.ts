@@ -31,7 +31,7 @@ export const removeToken = (): void => {
 export function useAuth() {
   const queryClient = useQueryClient();
 
-  const { data: user, isLoading } = useQuery({
+  const { data: user, isLoading, refetch } = useQuery({
     queryKey: ["/api/auth/me"],
     retry: false,
     queryFn: async () => {
@@ -71,6 +71,9 @@ export function useAuth() {
     },
     onSuccess: (data: AuthResponse) => {
       setToken(data.token);
+      // Set the user data directly in the cache to avoid race conditions
+      queryClient.setQueryData(["/api/auth/me"], data.user);
+      // Also invalidate to ensure fresh data
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
     },
   });
@@ -94,6 +97,9 @@ export function useAuth() {
     },
     onSuccess: (data: AuthResponse) => {
       setToken(data.token);
+      // Set the user data directly in the cache to avoid race conditions
+      queryClient.setQueryData(["/api/auth/me"], data.user);
+      // Also invalidate to ensure fresh data
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
     },
   });
@@ -105,6 +111,8 @@ export function useAuth() {
       return { success: true };
     },
     onSuccess: () => {
+      // Clear user data from cache
+      queryClient.setQueryData(["/api/auth/me"], null);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
     },
   });
