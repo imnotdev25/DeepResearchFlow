@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Network, MessageSquare, Calendar, Users, Quote, BookOpen } from "lucide-react";
+import { Network, MessageSquare, Calendar, Users, Quote, BookOpen, Building, TrendingUp } from "lucide-react";
 import { type Paper } from "@shared/schema";
 
 interface PapersListProps {
@@ -60,6 +60,18 @@ export function PapersList({ papers, onPaperSelect, onVisualize, onChat }: Paper
                       {paper.authors.length} authors
                     </Badge>
                   )}
+                  {paper.venue && (
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      <Building className="w-3 h-3" />
+                      {paper.venue}
+                    </Badge>
+                  )}
+                  {paper.h5Index && (
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      <TrendingUp className="w-3 h-3" />
+                      H5: {paper.h5Index}
+                    </Badge>
+                  )}
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
@@ -69,10 +81,35 @@ export function PapersList({ papers, onPaperSelect, onVisualize, onChat }: Paper
                   </CardDescription>
                 )}
                 {paper.authors && paper.authors.length > 0 && (
-                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-                    <strong>Authors:</strong> {paper.authors.slice(0, 3).map(author => typeof author === 'string' ? author : author.name).join(", ")}
-                    {paper.authors.length > 3 && ` +${paper.authors.length - 3} more`}
-                  </p>
+                  <div className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                    <strong>Authors:</strong>
+                    <div className="mt-1 space-y-1">
+                      {paper.authors.slice(0, 3).map((author, index) => {
+                        const authorObj = typeof author === 'string' ? { name: author } : author;
+                        return (
+                          <div key={index} className="flex items-center gap-2">
+                            <span>{authorObj.name}</span>
+                            {authorObj.institution && (
+                              <Badge variant="secondary" className="text-xs">
+                                <Building className="w-2 h-2 mr-1" />
+                                {authorObj.institution}
+                              </Badge>
+                            )}
+                            {authorObj.hIndex && (
+                              <Badge variant="secondary" className="text-xs">
+                                h-index: {authorObj.hIndex}
+                              </Badge>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {paper.authors.length > 3 && (
+                        <div className="text-xs text-slate-500">
+                          +{paper.authors.length - 3} more authors
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 )}
                 <div className="flex gap-2">
                   <Button

@@ -11,10 +11,14 @@ export const papers = pgTable("papers", {
     authorId?: string;
     name: string;
     affiliations?: string[];
+    institution?: string;
+    hIndex?: number;
   }>>().notNull().default([]),
   abstract: text("abstract"),
   year: integer("year"),
   venue: text("venue"),
+  venueId: text("venue_id"),
+  h5Index: integer("h5_index"),
   citationCount: integer("citation_count").default(0),
   referenceCount: integer("reference_count").default(0),
   url: text("url"),

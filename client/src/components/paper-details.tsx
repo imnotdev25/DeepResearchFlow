@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Network, MessageSquare, Calendar, Users, Quote, ExternalLink, FileText } from "lucide-react";
+import { Network, MessageSquare, Calendar, Users, Quote, ExternalLink, FileText, Building, TrendingUp } from "lucide-react";
 import { type Paper } from "@shared/schema";
 
 interface PaperDetailsProps {
@@ -40,6 +40,18 @@ export function PaperDetails({ paper, onVisualize, onChat }: PaperDetailsProps) 
                 {paper.authors.length} authors
               </Badge>
             )}
+            {paper.venue && (
+              <Badge variant="outline" className="flex items-center gap-1">
+                <Building className="w-3 h-3" />
+                {paper.venue}
+              </Badge>
+            )}
+            {paper.h5Index && (
+              <Badge variant="outline" className="flex items-center gap-1">
+                <TrendingUp className="w-3 h-3" />
+                H5: {paper.h5Index}
+              </Badge>
+            )}
           </div>
         </div>
 
@@ -57,12 +69,28 @@ export function PaperDetails({ paper, onVisualize, onChat }: PaperDetailsProps) 
         {paper.authors && paper.authors.length > 0 && (
           <div>
             <h4 className="font-medium text-slate-900 dark:text-slate-100 mb-2">Authors</h4>
-            <div className="space-y-1">
-              {paper.authors.slice(0, 5).map((author, index) => (
-                <p key={index} className="text-sm text-slate-600 dark:text-slate-400">
-                  {typeof author === 'string' ? author : author.name}
-                </p>
-              ))}
+            <div className="space-y-2">
+              {paper.authors.slice(0, 5).map((author, index) => {
+                const authorObj = typeof author === 'string' ? { name: author } : author;
+                return (
+                  <div key={index} className="flex items-center gap-2">
+                    <span className="text-sm text-slate-600 dark:text-slate-400">
+                      {authorObj.name}
+                    </span>
+                    {authorObj.institution && (
+                      <Badge variant="secondary" className="text-xs">
+                        <Building className="w-2 h-2 mr-1" />
+                        {authorObj.institution}
+                      </Badge>
+                    )}
+                    {authorObj.hIndex && (
+                      <Badge variant="secondary" className="text-xs">
+                        h-index: {authorObj.hIndex}
+                      </Badge>
+                    )}
+                  </div>
+                );
+              })}
               {paper.authors.length > 5 && (
                 <p className="text-sm text-slate-500 dark:text-slate-500">
                   +{paper.authors.length - 5} more authors

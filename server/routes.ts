@@ -269,7 +269,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       searchUrl.searchParams.append('query', query);
       searchUrl.searchParams.append('offset', offset.toString());
       searchUrl.searchParams.append('limit', limit.toString());
-      searchUrl.searchParams.append('fields', 'paperId,title,authors,abstract,year,venue,citationCount,referenceCount,url,fieldsOfStudy');
+      searchUrl.searchParams.append('fields', 'paperId,title,authors,abstract,year,venue,journal,citationCount,referenceCount,url,fieldsOfStudy');
       
       if (year) {
         searchUrl.searchParams.append('year', year.toString());
@@ -295,17 +295,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const data = await response.json();
       const papers = data.data || [];
       
-      // Store papers in local storage for caching
+      // Enrich papers with additional data and store them
       for (const paperData of papers) {
         const existingPaper = await storage.getPaper(paperData.paperId);
         if (!existingPaper) {
+          // Enrich author data with institutional information
+          let enrichedAuthors = paperData.authors || [];
+          
+          // For each author, try to get additional data from Semantic Scholar
+          if (enrichedAuthors.length > 0) {
+            try {
+              const authorPromises = enrichedAuthors.slice(0, 3).map(async (author: any) => {
+                if (author.authorId) {
+                  try {
+                    const authorResponse = await fetch(
+                      `${SEMANTIC_SCHOLAR_BASE_URL}/author/${author.authorId}?fields=name,affiliations,hIndex,paperCount`,
+                      { headers }
+                    );
+                    if (authorResponse.ok) {
+                      const authorData = await authorResponse.json();
+                      return {
+                        ...author,
+                        institution: authorData.affiliations?.[0] || author.affiliations?.[0],
+                        hIndex: authorData.hIndex,
+                        affiliations: authorData.affiliations || author.affiliations
+                      };
+                    }
+                  } catch (e) {
+                    // Ignore individual author fetch errors
+                  }
+                }
+                return {
+                  ...author,
+                  institution: author.affiliations?.[0],
+                  hIndex: undefined
+                };
+              });
+              
+              enrichedAuthors = await Promise.all(authorPromises);
+            } catch (e) {
+              // If author enrichment fails, use original data
+            }
+          }
+
           await storage.createPaper({
             paperId: paperData.paperId,
             title: paperData.title || 'Untitled',
-            authors: paperData.authors || [],
+            authors: enrichedAuthors,
             abstract: paperData.abstract,
             year: paperData.year,
-            venue: paperData.venue,
+            venue: paperData.venue || paperData.journal?.name,
+            venueId: paperData.journal?.id,
+            h5Index: paperData.journal?.h5Index,
             citationCount: paperData.citationCount || 0,
             referenceCount: paperData.referenceCount || 0,
             url: paperData.url,
