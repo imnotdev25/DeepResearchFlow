@@ -3,50 +3,238 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { RotateCcw, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 import { type Paper } from "@shared/schema";
+import * as d3 from "d3";
 
 interface GraphVisualizationProps {
   paperId: string;
   onNodeClick: (paper: Paper) => void;
 }
 
+interface GraphNode extends d3.SimulationNodeDatum {
+  id: string;
+  paper: Paper;
+  x?: number;
+  y?: number;
+}
+
+interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
+  source: string | GraphNode;
+  target: string | GraphNode;
+  type: 'citation' | 'reference';
+}
+
 export function GraphVisualization({ paperId, onNodeClick }: GraphVisualizationProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [graphData, setGraphData] = useState<{ nodes: GraphNode[], links: GraphLink[] } | null>(null);
+  const simulationRef = useRef<d3.Simulation<GraphNode, GraphLink> | null>(null);
+  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
 
+  // Fetch citation data and setup D3.js graph
   useEffect(() => {
-    if (!paperId) return;
+    if (!paperId || !svgRef.current) return;
     
     setIsLoading(true);
     setError(null);
     
-    // Placeholder for D3.js visualization
-    // This would normally fetch citation data and render a graph
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-      // Mock successful load
-    }, 1000);
+    const fetchCitationData = async () => {
+      try {
+        // Fetch main paper
+        const paperResponse = await fetch(`/api/papers/${paperId}`);
+        if (!paperResponse.ok) throw new Error('Failed to fetch paper data');
+        const mainPaper = await paperResponse.json();
 
-    return () => clearTimeout(timer);
+        // Fetch citations and references
+        const citationsResponse = await fetch(`/api/papers/${paperId}/citations`);
+        const referencesResponse = await fetch(`/api/papers/${paperId}/references`);
+        
+        const citations = citationsResponse.ok ? await citationsResponse.json() : { papers: [] };
+        const references = referencesResponse.ok ? await referencesResponse.json() : { papers: [] };
+
+        // Build graph data
+        const nodes: GraphNode[] = [
+          { id: mainPaper.paperId, paper: mainPaper }
+        ];
+        
+        const links: GraphLink[] = [];
+
+        // Add citation nodes and links
+        citations.papers?.slice(0, 5).forEach((paper: Paper) => {
+          nodes.push({ id: paper.paperId, paper });
+          links.push({ source: paper.paperId, target: mainPaper.paperId, type: 'citation' });
+        });
+
+        // Add reference nodes and links
+        references.papers?.slice(0, 5).forEach((paper: Paper) => {
+          nodes.push({ id: paper.paperId, paper });
+          links.push({ source: mainPaper.paperId, target: paper.paperId, type: 'reference' });
+        });
+
+        setGraphData({ nodes, links });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load citation data');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchCitationData();
   }, [paperId]);
 
+  // Create D3.js visualization
+  useEffect(() => {
+    if (!graphData || !svgRef.current) return;
+
+    const svg = d3.select(svgRef.current);
+    const width = 800;
+    const height = 500;
+
+    // Clear previous content
+    svg.selectAll("*").remove();
+
+    // Create zoom behavior
+    const zoom = d3.zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.5, 3])
+      .on("zoom", (event) => {
+        g.attr("transform", event.transform);
+      });
+
+    zoomRef.current = zoom;
+    svg.call(zoom);
+
+    // Create main group for zoomable content
+    const g = svg.append("g");
+
+    // Create simulation
+    const simulation = d3.forceSimulation<GraphNode>(graphData.nodes)
+      .force("link", d3.forceLink<GraphNode, GraphLink>(graphData.links).id(d => d.id))
+      .force("charge", d3.forceManyBody().strength(-300))
+      .force("center", d3.forceCenter(width / 2, height / 2));
+
+    simulationRef.current = simulation;
+
+    // Create links
+    const link = g.append("g")
+      .attr("stroke", "#999")
+      .attr("stroke-opacity", 0.6)
+      .selectAll("line")
+      .data(graphData.links)
+      .join("line")
+      .attr("stroke-width", 2)
+      .attr("stroke", d => d.type === 'citation' ? '#ef4444' : '#3b82f6');
+
+    // Create nodes
+    const node = g.append("g")
+      .selectAll("circle")
+      .data(graphData.nodes)
+      .join("circle")
+      .attr("r", d => d.paper.paperId === paperId ? 20 : 12)
+      .attr("fill", d => d.paper.paperId === paperId ? '#3b82f6' : '#64748b')
+      .attr("stroke", d => d.paper.paperId === paperId ? '#1d4ed8' : '#475569')
+      .attr("stroke-width", 2)
+      .style("cursor", "pointer")
+      .on("click", (event, d) => {
+        event.stopPropagation();
+        onNodeClick(d.paper);
+      });
+
+    // Add drag behavior
+    node.call(d3.drag<any, GraphNode>()
+      .on("start", dragstarted)
+      .on("drag", dragged)
+      .on("end", dragended));
+
+    // Add labels
+    const labels = g.append("g")
+      .selectAll("text")
+      .data(graphData.nodes)
+      .join("text")
+      .text(d => d.paper.title.length > 30 ? d.paper.title.substring(0, 30) + "..." : d.paper.title)
+      .attr("font-size", 10)
+      .attr("text-anchor", "middle")
+      .attr("dy", -25)
+      .style("pointer-events", "none")
+      .style("fill", "#374151");
+
+    // Add hover effects
+    node.on("mouseenter", function(event, d) {
+      d3.select(this).attr("r", d.paper.paperId === paperId ? 24 : 16);
+    }).on("mouseleave", function(event, d) {
+      d3.select(this).attr("r", d.paper.paperId === paperId ? 20 : 12);
+    });
+
+    // Update positions on tick
+    simulation.on("tick", () => {
+      link
+        .attr("x1", d => (d.source as GraphNode).x!)
+        .attr("y1", d => (d.source as GraphNode).y!)
+        .attr("x2", d => (d.target as GraphNode).x!)
+        .attr("y2", d => (d.target as GraphNode).y!);
+
+      node
+        .attr("cx", d => d.x!)
+        .attr("cy", d => d.y!);
+
+      labels
+        .attr("x", d => d.x!)
+        .attr("y", d => d.y!);
+    });
+
+    // Drag functions
+    function dragstarted(event: any) {
+      if (!event.active) simulation.alphaTarget(0.3).restart();
+      event.subject.fx = event.subject.x;
+      event.subject.fy = event.subject.y;
+    }
+
+    function dragged(event: any) {
+      event.subject.fx = event.x;
+      event.subject.fy = event.y;
+    }
+
+    function dragended(event: any) {
+      if (!event.active) simulation.alphaTarget(0);
+      event.subject.fx = null;
+      event.subject.fy = null;
+    }
+
+    return () => {
+      simulation.stop();
+    };
+  }, [graphData, paperId, onNodeClick]);
+
   const handleReset = () => {
-    // Reset zoom and pan
+    if (zoomRef.current && svgRef.current) {
+      d3.select(svgRef.current)
+        .transition()
+        .duration(500)
+        .call(zoomRef.current.transform, d3.zoomIdentity);
+    }
     console.log("Reset graph view");
   };
 
   const handleZoomIn = () => {
-    // Zoom in
+    if (zoomRef.current && svgRef.current) {
+      d3.select(svgRef.current)
+        .transition()
+        .duration(200)
+        .call(zoomRef.current.scaleBy, 1.5);
+    }
     console.log("Zoom in");
   };
 
   const handleZoomOut = () => {
-    // Zoom out
+    if (zoomRef.current && svgRef.current) {
+      d3.select(svgRef.current)
+        .transition()
+        .duration(200)
+        .call(zoomRef.current.scaleBy, 0.75);
+    }
     console.log("Zoom out");
   };
 
   const handleFullscreen = () => {
-    // Toggle fullscreen
     console.log("Toggle fullscreen");
   };
 
@@ -94,84 +282,19 @@ export function GraphVisualization({ paperId, onNodeClick }: GraphVisualizationP
       <div className="h-[500px] border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800">
         <svg
           ref={svgRef}
-          width="100%"
-          height="100%"
-          className="rounded-lg"
-        >
-          {/* Placeholder visualization */}
-          <g>
-            {/* Central node */}
-            <circle
-              cx="50%"
-              cy="50%"
-              r="20"
-              fill="#3b82f6"
-              stroke="#1d4ed8"
-              strokeWidth="2"
-              className="cursor-pointer hover:fill-blue-700"
-            />
-            <text
-              x="50%"
-              y="50%"
-              textAnchor="middle"
-              dy="0.35em"
-              fill="white"
-              fontSize="12"
-              fontWeight="bold"
-            >
-              Paper
-            </text>
-
-            {/* Connected nodes */}
-            {[...Array(8)].map((_, i) => {
-              const angle = (i * Math.PI * 2) / 8;
-              const radius = 100;
-              const x = 50 + Math.cos(angle) * radius;
-              const y = 50 + Math.sin(angle) * radius;
-              
-              return (
-                <g key={i}>
-                  {/* Connection line */}
-                  <line
-                    x1="50%"
-                    y1="50%"
-                    x2={`${x}%`}
-                    y2={`${y}%`}
-                    stroke="#94a3b8"
-                    strokeWidth="1"
-                  />
-                  {/* Connected node */}
-                  <circle
-                    cx={`${x}%`}
-                    cy={`${y}%`}
-                    r="12"
-                    fill="#64748b"
-                    stroke="#475569"
-                    strokeWidth="1"
-                    className="cursor-pointer hover:fill-slate-600"
-                  />
-                  <text
-                    x={`${x}%`}
-                    y={`${y}%`}
-                    textAnchor="middle"
-                    dy="0.35em"
-                    fill="white"
-                    fontSize="8"
-                  >
-                    {i + 1}
-                  </text>
-                </g>
-              );
-            })}
-          </g>
-        </svg>
+          width="800"
+          height="500"
+          viewBox="0 0 800 500"
+          className="w-full h-full rounded-lg"
+          style={{ userSelect: 'none' }}
+        />
       </div>
 
       {/* Graph Info */}
       <div className="mt-4 text-sm text-slate-600 dark:text-slate-400 text-center">
-        Interactive citation network visualization (placeholder)
+        Interactive citation network visualization
         <br />
-        Click nodes to explore connected papers
+        <span className="text-blue-600">Blue lines:</span> References • <span className="text-red-600">Red lines:</span> Citations • <span className="font-medium">Drag nodes</span> to explore
       </div>
     </div>
   );
