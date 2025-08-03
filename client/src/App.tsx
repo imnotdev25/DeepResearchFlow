@@ -39,6 +39,24 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/search">
+        {() => <Home defaultView="search" />}
+      </Route>
+      <Route path="/paper/:paperId">
+        {({ params }: { params: { paperId: string } }) => 
+          <Home defaultView="search" selectedPaperId={params.paperId} />
+        }
+      </Route>
+      <Route path="/paper/:paperId/graph">
+        {({ params }: { params: { paperId: string } }) => 
+          <Home defaultView="graph" selectedPaperId={params.paperId} />
+        }
+      </Route>
+      <Route path="/paper/:paperId/chat">
+        {({ params }: { params: { paperId: string } }) => 
+          <Home defaultView="chat" selectedPaperId={params.paperId} />
+        }
+      </Route>
       <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>

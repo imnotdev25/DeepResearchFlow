@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,22 +14,46 @@ import { ChatInterface } from "@/components/chat-interface";
 import { Settings, LogOut, MessageSquare, Network, Search, BookOpen } from "lucide-react";
 import { type Paper } from "@shared/schema";
 
-export default function Home() {
+interface HomeProps {
+  defaultView?: "search" | "graph" | "chat";
+  selectedPaperId?: string;
+}
+
+export default function Home({ defaultView = "search", selectedPaperId }: HomeProps = {}) {
   const { user, logout } = useAuth();
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [selectedPaper, setSelectedPaper] = useState<Paper | null>(null);
-  const [view, setView] = useState<"search" | "graph" | "chat">("search");
+  const [view, setView] = useState<"search" | "graph" | "chat">(defaultView);
   const [searchResults, setSearchResults] = useState<Paper[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
+  // Fetch paper by ID if provided in route
+  const { data: routePaper } = useQuery({
+    queryKey: ["/api/papers", selectedPaperId],
+    enabled: !!selectedPaperId,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (routePaper && typeof routePaper === 'object' && 'paperId' in routePaper) {
+      setSelectedPaper(routePaper as Paper);
+    }
+  }, [routePaper]);
+
+  useEffect(() => {
+    setView(defaultView);
+  }, [defaultView]);
+
   const handlePaperSelect = (paper: Paper) => {
     setSelectedPaper(paper);
+    navigate(`/paper/${paper.paperId}`);
   };
 
   const handleVisualizePaper = (paper: Paper) => {
     setSelectedPaper(paper);
     setView("graph");
+    navigate(`/paper/${paper.paperId}/graph`);
   };
 
   const handleChatWithPaper = (paper: Paper) => {
@@ -42,6 +67,7 @@ export default function Home() {
     }
     setSelectedPaper(paper);
     setView("chat");
+    navigate(`/paper/${paper.paperId}/chat`);
   };
 
   const handleLogout = async () => {
@@ -94,7 +120,16 @@ export default function Home() {
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-6">
-        <Tabs value={view} onValueChange={(value) => setView(value as any)} className="w-full">
+        <Tabs value={view} onValueChange={(value) => {
+          const newView = value as "search" | "graph" | "chat";
+          setView(newView);
+          if (selectedPaper) {
+            if (newView === "search") navigate(`/paper/${selectedPaper.paperId}`);
+            else navigate(`/paper/${selectedPaper.paperId}/${newView}`);
+          } else if (newView === "search") {
+            navigate('/search');
+          }
+        }} className="w-full">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="search" className="flex items-center gap-2">
               <Search className="w-4 h-4" />
