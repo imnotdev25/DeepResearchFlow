@@ -3,27 +3,13 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertPaperSchema, insertSearchQuerySchema, insertUserSchema, type SearchFilters, type User } from "@shared/schema";
 import { z } from "zod";
-import { getSession, requireAuth, createUser, getUserByEmail, getUserByUsername, getUserById, verifyPassword, updateUserApiKey } from "./auth";
+import { requireAuth, createUser, getUserByEmail, getUserByUsername, getUserById, verifyPassword, updateUserApiKey, generateToken } from "./auth";
 import { generatePaperChat, testApiKey } from "./openai";
 
 const SEMANTIC_SCHOLAR_API_KEY = process.env.SEMANTIC_SCHOLAR_API_KEY || process.env.S2_API_KEY;
 const SEMANTIC_SCHOLAR_BASE_URL = "https://api.semanticscholar.org/graph/v1";
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Session middleware
-  app.use(getSession());
-  
-  // Session debugging middleware
-  app.use((req: any, res, next) => {
-    console.log('Session middleware debug:', {
-      sessionId: req.session?.id,
-      userId: req.session?.userId,
-      url: req.url,
-      method: req.method,
-      cookieHeader: req.headers.cookie
-    });
-    next();
-  });
   
   // Auth routes
   app.post("/api/auth/register", async (req, res) => {
@@ -54,24 +40,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const user = await createUser({ email, username, password, openaiApiKey, openaiBaseUrl });
-      req.session.userId = user.id;
+      const token = generateToken(user.id);
       
-      // Save session before sending response
-      req.session.save((err: any) => {
-        if (err) {
-          console.error('Session save error:', err);
-          return res.status(500).json({ error: "Session save failed" });
-        }
-        
-        console.log('Registration successful, session saved:', { userId: user.id, sessionId: req.session.id });
-        res.json({ 
-          user: { 
-            id: user.id, 
-            email: user.email, 
-            username: user.username,
-            hasApiKey: !!user.openaiApiKey 
-          } 
-        });
+      console.log('Registration successful:', { userId: user.id });
+      res.json({ 
+        user: { 
+          id: user.id, 
+          email: user.email, 
+          username: user.username,
+          hasApiKey: !!user.openaiApiKey 
+        },
+        token
       });
     } catch (error) {
       console.error('Registration error:', error);
@@ -97,24 +76,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
-      req.session.userId = user.id;
+      const token = generateToken(user.id);
       
-      // Save session before sending response
-      req.session.save((err: any) => {
-        if (err) {
-          console.error('Session save error:', err);
-          return res.status(500).json({ error: "Session save failed" });
-        }
-        
-        console.log('Login successful, session saved:', { userId: user.id, sessionId: req.session.id });
-        res.json({ 
-          user: { 
-            id: user.id, 
-            email: user.email, 
-            username: user.username,
-            hasApiKey: !!user.openaiApiKey 
-          } 
-        });
+      console.log('Login successful:', { userId: user.id });
+      res.json({ 
+        user: { 
+          id: user.id, 
+          email: user.email, 
+          username: user.username,
+          hasApiKey: !!user.openaiApiKey 
+        },
+        token
       });
     } catch (error) {
       console.error('Login error:', error);
@@ -123,17 +95,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post("/api/auth/logout", (req, res) => {
-    req.session.destroy(() => {
-      res.json({ success: true });
-    });
+    // With JWT, logout is handled client-side by removing the token
+    res.json({ success: true });
   });
 
   app.get("/api/auth/me", requireAuth, async (req, res) => {
     try {
-      const userId = req.session.userId;
-      if (!userId) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
+      const userId = req.userId!;
       const user = await getUserById(userId);
       if (!user) {
         return res.status(404).json({ error: "User not found" });
@@ -154,7 +122,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/auth/api-key", requireAuth, async (req, res) => {
     try {
       const { apiKey, baseUrl } = req.body;
-      const userId = req.session.userId;
+      const userId = req.userId!;
       
       if (!apiKey) {
         return res.status(400).json({ error: "API key is required" });
@@ -165,9 +133,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid API key" });
       }
 
-      if (!userId) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
       await updateUserApiKey(userId, apiKey, baseUrl);
       res.json({ success: true });
     } catch (error) {
@@ -180,15 +145,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/chat/session", requireAuth, async (req, res) => {
     try {
       const { paperId, title } = req.body;
-      const userId = req.session.userId;
+      const userId = req.userId!;
       
       if (!paperId || !title) {
         return res.status(400).json({ error: "Paper ID and title are required" });
       }
 
-      if (!userId) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
       const session = await storage.createChatSession({
         userId,
         paperId,
@@ -204,10 +166,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/chat/sessions", requireAuth, async (req, res) => {
     try {
-      const userId = req.session.userId;
-      if (!userId) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
+      const userId = req.userId!;
       const sessions = await storage.getUserChatSessions(userId);
       res.json({ sessions });
     } catch (error) {
@@ -219,7 +178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/chat/session/:sessionId/messages", requireAuth, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
-      const userId = req.session.userId;
+      const userId = req.userId!;
       
       // Verify session belongs to user
       const session = await storage.getChatSession(sessionId);
@@ -238,7 +197,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/chat/session/:sessionId/message", requireAuth, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
-      const userId = req.session.userId;
+      const userId = req.userId!;
       const { content } = req.body;
       
       if (!content) {

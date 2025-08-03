@@ -8,6 +8,26 @@ export interface User {
   hasApiKey: boolean;
 }
 
+export interface AuthResponse {
+  user: User;
+  token: string;
+}
+
+// Token management utilities
+const TOKEN_KEY = 'auth_token';
+
+export const getToken = (): string | null => {
+  return localStorage.getItem(TOKEN_KEY);
+};
+
+export const setToken = (token: string): void => {
+  localStorage.setItem(TOKEN_KEY, token);
+};
+
+export const removeToken = (): void => {
+  localStorage.removeItem(TOKEN_KEY);
+};
+
 export function useAuth() {
   const queryClient = useQueryClient();
 
@@ -15,10 +35,18 @@ export function useAuth() {
     queryKey: ["/api/auth/me"],
     retry: false,
     queryFn: async () => {
+      const token = getToken();
+      if (!token) {
+        return null; // No token available
+      }
+      
       const response = await fetch("/api/auth/me", {
-        credentials: "include",
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
       });
       if (response.status === 401) {
+        removeToken(); // Remove invalid token
         return null; // User not authenticated
       }
       if (!response.ok) {
@@ -29,12 +57,11 @@ export function useAuth() {
   });
 
   const loginMutation = useMutation({
-    mutationFn: async (credentials: { login: string; password: string }) => {
+    mutationFn: async (credentials: { login: string; password: string }): Promise<AuthResponse> => {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         body: JSON.stringify(credentials),
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
       });
       if (!response.ok) {
         const error = await response.json();
@@ -42,7 +69,8 @@ export function useAuth() {
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: AuthResponse) => {
+      setToken(data.token);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
     },
   });
@@ -52,12 +80,11 @@ export function useAuth() {
       email: string;
       username: string;
       password: string;
-    }) => {
+    }): Promise<AuthResponse> => {
       const response = await fetch("/api/auth/register", {
         method: "POST",
         body: JSON.stringify(userData),
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
       });
       if (!response.ok) {
         const error = await response.json();
@@ -65,21 +92,17 @@ export function useAuth() {
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: AuthResponse) => {
+      setToken(data.token);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
     },
   });
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch("/api/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      });
-      if (!response.ok) {
-        throw new Error("Logout failed");
-      }
-      return response.json();
+      // With JWT, logout is handled client-side
+      removeToken();
+      return { success: true };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
@@ -88,10 +111,18 @@ export function useAuth() {
 
   const updateApiKeyMutation = useMutation({
     mutationFn: async (data: { apiKey: string; baseUrl?: string }) => {
+      const token = getToken();
+      if (!token) {
+        throw new Error("Authentication required");
+      }
+      
       const response = await fetch("/api/auth/api-key", {
         method: "POST",
         body: JSON.stringify(data),
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
       });
       if (!response.ok) {
         const error = await response.json();

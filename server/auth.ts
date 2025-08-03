@@ -1,12 +1,12 @@
 import bcrypt from 'bcrypt';
-import session from 'express-session';
-import connectPg from 'connect-pg-simple';
+import jwt from 'jsonwebtoken';
 import { db } from './db';
 import { users, type User, type InsertUser } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
+import type { Request, Response, NextFunction } from 'express';
 
-const SESSION_SECRET = process.env.SESSION_SECRET || 'your-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || 'your-jwt-secret-change-in-production';
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32);
 
 // Simple encryption for API keys
@@ -28,36 +28,17 @@ function decrypt(text: string): string {
   return decrypted;
 }
 
-export function getSession() {
-  const sessionTtl = 7 * 24 * 60 * 60; // 1 week in seconds
-  const pgStore = connectPg(session);
-  const sessionStore = new pgStore({
-    conString: process.env.DATABASE_URL,
-    createTableIfMissing: false,
-    ttl: sessionTtl,
-    tableName: "sessions",
-    schemaName: "public"
-  });
-  
-  // Add error handling for session store
-  sessionStore.on('error', (err: any) => {
-    console.error('Session store error:', err);
-  });
-  
-  return session({
-    secret: SESSION_SECRET,
-    store: sessionStore,
-    resave: true, // Force session save on every request
-    saveUninitialized: false,
-    rolling: false, // Don't reset maxAge on every request
-    cookie: {
-      httpOnly: true,
-      secure: false, // Set to false for development
-      maxAge: sessionTtl * 1000, // maxAge expects milliseconds
-      sameSite: 'lax'
-    },
-    name: 'sessionId' // Use a different name to avoid conflicts
-  });
+export function generateToken(userId: number): string {
+  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
+}
+
+export function verifyToken(token: string): { userId: number } | null {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId: number };
+    return decoded;
+  } catch (error) {
+    return null;
+  }
 }
 
 export async function hashPassword(password: string): Promise<string> {
@@ -124,24 +105,29 @@ export async function getUserApiKey(userId: number): Promise<{ apiKey: string; b
   };
 }
 
-export function requireAuth(req: any, res: any, next: any) {
-  console.log('RequireAuth check:', { 
-    sessionExists: !!req.session, 
-    userId: req.session?.userId,
-    sessionId: req.session?.id,
-    sessionData: req.session
-  });
+export function requireAuth(req: Request & { userId?: number }, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
   
-  if (req.session?.userId) {
-    next();
-  } else {
-    res.status(401).json({ error: 'Authentication required' });
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
   }
+  
+  const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+  const decoded = verifyToken(token);
+  
+  if (!decoded) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+  
+  req.userId = decoded.userId;
+  next();
 }
 
-// Extend Express session interface
-declare module 'express-session' {
-  interface SessionData {
-    userId: number;
+// Extend Express Request interface
+declare global {
+  namespace Express {
+    interface Request {
+      userId?: number;
+    }
   }
 }
