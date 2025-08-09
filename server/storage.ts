@@ -2,6 +2,7 @@ import {
   papers, 
   paperConnections, 
   searchQueries, 
+  searchCache,
   users,
   chatSessions,
   chatMessages,
@@ -12,7 +13,9 @@ import {
   type PaperConnection, 
   type InsertPaperConnection, 
   type SearchQuery, 
-  type InsertSearchQuery, 
+  type InsertSearchQuery,
+  type SearchCache,
+  type InsertSearchCache,
   type SearchFilters, 
   type PaperSearchResponse,
   type User,
@@ -25,7 +28,7 @@ import {
   type InsertCollection
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, or, ilike } from "drizzle-orm";
+import { eq, desc, and, or, ilike, sql, lt } from "drizzle-orm";
 
 export interface IStorage {
   // Paper operations
@@ -42,6 +45,11 @@ export interface IStorage {
   // Search query operations
   createSearchQuery(query: InsertSearchQuery): Promise<SearchQuery>;
   getRecentSearches(userId?: number, limit?: number): Promise<SearchQuery[]>;
+  
+  // Search cache operations
+  getSearchCache(queryHash: string): Promise<SearchCache | undefined>;
+  saveSearchCache(cache: InsertSearchCache): Promise<SearchCache>;
+  clearExpiredCache(): Promise<void>;
   
   // User operations
   getUserByEmail(email: string): Promise<User | undefined>;
@@ -145,6 +153,29 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(searchQueries)
       .orderBy(desc(searchQueries.createdAt))
       .limit(limit);
+  }
+
+  async getSearchCache(queryHash: string): Promise<SearchCache | undefined> {
+    const [cache] = await db.select().from(searchCache).where(eq(searchCache.queryHash, queryHash));
+    
+    // Check if cache is expired
+    if (cache && cache.expiresAt && new Date() > cache.expiresAt) {
+      await db.delete(searchCache).where(eq(searchCache.queryHash, queryHash));
+      return undefined;
+    }
+    
+    return cache;
+  }
+
+  async saveSearchCache(insertCache: InsertSearchCache): Promise<SearchCache> {
+    const [cache] = await db.insert(searchCache).values(insertCache).returning();
+    return cache;
+  }
+
+  async clearExpiredCache(): Promise<void> {
+    await db.delete(searchCache).where(
+      lt(searchCache.expiresAt, sql`NOW()`)
+    );
   }
 
   async createChatSession(session: InsertChatSession): Promise<ChatSession> {

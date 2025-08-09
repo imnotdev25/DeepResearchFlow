@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import crypto from "crypto";
 import { storage } from "./storage";
 import { insertPaperSchema, insertSearchQuerySchema, insertUserSchema, type SearchFilters, type User } from "@shared/schema";
 import { z } from "zod";
@@ -8,6 +9,15 @@ import { generatePaperChat, testApiKey } from "./openai";
 
 const SEMANTIC_SCHOLAR_API_KEY = process.env.SEMANTIC_SCHOLAR_API_KEY || process.env.S2_API_KEY;
 const SEMANTIC_SCHOLAR_BASE_URL = "https://api.semanticscholar.org/graph/v1";
+
+// Helper function to generate cache hash
+function generateCacheHash(query: string, field?: string, year?: number, minCitations?: number): string {
+  const key = `${query}|${field || ''}|${year || ''}|${minCitations || ''}`;
+  return crypto.createHash('md5').update(key).digest('hex');
+}
+
+// Cache expiration time (1 hour)
+const CACHE_EXPIRATION_HOURS = 1;
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
@@ -251,18 +261,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/papers/search", async (req, res) => {
     try {
       const { query, field, year, minCitations, offset = 0, limit = 20 } = req.body;
+      const userId = req.userId; // May be undefined for non-authenticated users
       
       if (!query || typeof query !== 'string') {
         return res.status(400).json({ error: "Query is required" });
       }
 
-      // Save search query
-      await storage.createSearchQuery({
-        query,
-        field,
-        year: year ? parseInt(year) : undefined,
-        resultCount: 0
-      });
+      // Generate cache key
+      const cacheHash = generateCacheHash(query, field, year, minCitations);
+      
+      // Check cache first
+      const cachedResult = await storage.getSearchCache(cacheHash);
+      if (cachedResult && cachedResult.results) {
+        // Apply offset and limit to cached results
+        const startIndex = offset;
+        const endIndex = offset + limit;
+        const paginatedResults = cachedResult.results.slice(startIndex, endIndex);
+        
+        console.log(`Cache hit for query: ${query} (${paginatedResults.length} results)`);
+        return res.json({
+          papers: paginatedResults,
+          total: cachedResult.total,
+          offset,
+          cached: true
+        });
+      }
+
+      console.log(`Cache miss for query: ${query}, fetching from API`);
+
+      // Save search query for history (only if user is authenticated)
+      if (userId) {
+        await storage.createSearchQuery({
+          userId,
+          query,
+          field,
+          year: year ? parseInt(year) : undefined,
+          minCitations,
+          resultCount: 0
+        });
+      }
 
       // Search Semantic Scholar API
       const searchUrl = new URL(`${SEMANTIC_SCHOLAR_BASE_URL}/paper/search`);
@@ -294,6 +331,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const data = await response.json();
       const papers = data.data || [];
+      const total = data.total || papers.length;
+      
+      // Cache the complete results before pagination
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + CACHE_EXPIRATION_HOURS);
+      
+      await storage.saveSearchCache({
+        queryHash: cacheHash,
+        query,
+        field,
+        year: year ? parseInt(year) : undefined,
+        minCitations,
+        results: papers,
+        total,
+        expiresAt
+      });
+      
+      console.log(`Cached ${papers.length} results for query: ${query}`);
       
       // Enrich papers with additional data and store them
       for (const paperData of papers) {
@@ -357,15 +412,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Update search query with result count for authenticated users
+      if (userId) {
+        try {
+          await storage.createSearchQuery({
+            userId,
+            query,
+            field,
+            year: year ? parseInt(year) : undefined,
+            minCitations,
+            resultCount: total,
+            resultsData: papers.slice(0, 10) // Store first 10 results for preview
+          });
+        } catch (error) {
+          console.error('Failed to save search history:', error);
+        }
+      }
+
       res.json({
         papers,
-        total: data.total || papers.length,
+        total,
         offset: data.offset || offset,
-        next: data.next
+        next: data.next,
+        cached: false
       });
     } catch (error) {
       console.error('Search error:', error);
       res.status(500).json({ error: "Failed to search papers" });
+    }
+  });
+
+  // Get search history
+  app.get("/api/search/history", requireAuth, async (req, res) => {
+    try {
+      const userId = req.userId!;
+      const limit = parseInt(req.query.limit as string) || 10;
+      
+      const searchHistory = await storage.getRecentSearches(userId, limit);
+      res.json({ searchHistory });
+    } catch (error) {
+      console.error('Get search history error:', error);
+      res.status(500).json({ error: "Failed to get search history" });
+    }
+  });
+
+  // Clear expired cache (can be called periodically)
+  app.post("/api/cache/clear", async (req, res) => {
+    try {
+      await storage.clearExpiredCache();
+      res.json({ success: true, message: "Expired cache cleared" });
+    } catch (error) {
+      console.error('Clear cache error:', error);
+      res.status(500).json({ error: "Failed to clear cache" });
     }
   });
 

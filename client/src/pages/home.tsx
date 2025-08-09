@@ -12,6 +12,7 @@ import { GraphVisualization } from "@/components/graph-visualization";
 import { PaperDetails } from "@/components/paper-details";
 import { ChatInterface } from "@/components/chat-interface";
 import { ResearchJourneyVisualizer } from "@/components/research-journey-visualizer";
+import { SearchHistory } from "@/components/search-history";
 import { Settings, LogOut, MessageSquare, Network, Search, BookOpen, TrendingUp } from "lucide-react";
 import { type Paper } from "@shared/schema";
 
@@ -28,6 +29,7 @@ export default function Home({ defaultView = "search", selectedPaperId }: HomePr
   const [view, setView] = useState<"search" | "graph" | "chat" | "journey">(defaultView as "search" | "graph" | "chat" | "journey");
   const [searchResults, setSearchResults] = useState<Paper[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [showSearchHistory, setShowSearchHistory] = useState(false);
 
   // Fetch paper by ID if provided in route
   const { data: routePaper } = useQuery({
@@ -69,6 +71,63 @@ export default function Home({ defaultView = "search", selectedPaperId }: HomePr
     setSelectedPaper(paper);
     setView("chat");
     navigate(`/paper/${paper.paperId}/chat`);
+  };
+
+  const handleSearch = async (query: string, filters: any) => {
+    setIsSearching(true);
+    try {
+      const response = await fetch("/api/papers/search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          query,
+          field: filters.field,
+          year: filters.year,
+          minCitations: filters.minCitations,
+          offset: 0,
+          limit: 20
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Search failed");
+      }
+
+      const data = await response.json();
+      setSearchResults(data.papers);
+      setView("search");
+      navigate("/search");
+      
+      // Show cache status in toast
+      if (data.cached) {
+        toast({
+          title: "Search Results (Cached)",
+          description: `Found ${data.papers.length} papers from cache.`,
+        });
+      } else {
+        toast({
+          title: "Search Results",
+          description: `Found ${data.papers.length} papers and saved to cache.`,
+        });
+      }
+    } catch (error) {
+      console.error("Search error:", error);
+      toast({
+        title: "Search Error",
+        description: "Failed to search papers. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleHistorySearch = (query: string, field?: string, year?: number, minCitations?: number) => {
+    setShowSearchHistory(false);
+    handleSearch(query, { field, year, minCitations });
   };
 
   const handleLogout = async () => {
@@ -154,7 +213,7 @@ export default function Home({ defaultView = "search", selectedPaperId }: HomePr
           </TabsList>
 
           <TabsContent value="search" className="mt-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
               <div className="lg:col-span-2">
                 <SearchPanel 
                   onSearchResults={setSearchResults}
@@ -169,6 +228,33 @@ export default function Home({ defaultView = "search", selectedPaperId }: HomePr
                     onChat={handleChatWithPaper}
                   />
                 </div>
+              </div>
+              <div className="lg:col-span-1">
+                {user && (
+                  <div className="space-y-6">
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100">
+                          Search History
+                        </h3>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowSearchHistory(!showSearchHistory)}
+                          data-testid="button-toggle-search-history"
+                        >
+                          {showSearchHistory ? "Hide" : "Show"}
+                        </Button>
+                      </div>
+                      {showSearchHistory && (
+                        <SearchHistory
+                          onSelectSearch={handleHistorySearch}
+                          isCollapsed={true}
+                        />
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="lg:col-span-1">
                 {selectedPaper && (

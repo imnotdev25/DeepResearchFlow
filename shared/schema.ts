@@ -42,8 +42,23 @@ export const searchQueries = pgTable("search_queries", {
   query: text("query").notNull(),
   field: text("field"),
   year: integer("year"),
+  minCitations: integer("min_citations"),
   resultCount: integer("result_count").default(0),
+  resultsData: jsonb("results_data").$type<any[]>().default([]),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const searchCache = pgTable("search_cache", {
+  id: serial("id").primaryKey(),
+  queryHash: text("query_hash").notNull().unique(),
+  query: text("query").notNull(),
+  field: text("field"),
+  year: integer("year"),
+  minCitations: integer("min_citations"),
+  results: jsonb("results").$type<any[]>().notNull(),
+  total: integer("total").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  expiresAt: timestamp("expires_at"),
 });
 
 // Session storage table for authentication
@@ -160,6 +175,11 @@ export const insertSearchQuerySchema = createInsertSchema(searchQueries).omit({
   createdAt: true,
 });
 
+export const insertSearchCacheSchema = createInsertSchema(searchCache).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
@@ -190,6 +210,8 @@ export type PaperConnection = typeof paperConnections.$inferSelect;
 export type InsertPaperConnection = z.infer<typeof insertPaperConnectionSchema>;
 export type SearchQuery = typeof searchQueries.$inferSelect;
 export type InsertSearchQuery = z.infer<typeof insertSearchQuerySchema>;
+export type SearchCache = typeof searchCache.$inferSelect;
+export type InsertSearchCache = z.infer<typeof insertSearchCacheSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type ChatSession = typeof chatSessions.$inferSelect;
