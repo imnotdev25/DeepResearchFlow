@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,23 +25,44 @@ interface SearchHistoryProps {
 
 export function SearchHistory({ onSelectSearch, isCollapsed = false }: SearchHistoryProps) {
   const [showAll, setShowAll] = useState(false);
+  const { user, isAuthenticated } = useAuth();
 
   const { data: historyData, refetch, isLoading, error } = useQuery({
     queryKey: ['/api/search/history'],
     queryFn: async () => {
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+      
       const response = await fetch('/api/search/history?limit=20', {
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
       });
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch search history');
+        if (response.status === 401) {
+          // Token might be expired, remove it
+          localStorage.removeItem('auth_token');
+          throw new Error('Authentication expired. Please log in again.');
+        }
+        throw new Error(`Failed to fetch search history: ${response.status}`);
       }
+      
       const data = await response.json();
       return data.searchHistory as SearchQuery[];
     },
     staleTime: 1000 * 60 * 5, // 5 minutes
+    retry: false, // Don't retry on auth errors
+    enabled: isAuthenticated && !!user, // Only run if authenticated
   });
+
+  // Don't show anything if not authenticated
+  if (!isAuthenticated || !user) {
+    return null;
+  }
 
   const searchHistory = historyData || [];
   const displayedHistory = showAll ? searchHistory : searchHistory.slice(0, 5);
@@ -132,18 +154,22 @@ export function SearchHistory({ onSelectSearch, isCollapsed = false }: SearchHis
         ) : error ? (
           <div className="text-center py-8">
             <FileText className="w-12 h-12 mx-auto mb-4 text-slate-400" />
-            <p className="text-slate-600 dark:text-slate-400">
-              Failed to load search history
+            <p className="text-slate-600 dark:text-slate-400 mb-2">
+              {error.message.includes('Authentication') 
+                ? 'Please log in to view search history' 
+                : 'Failed to load search history'}
             </p>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => refetch()} 
-              className="mt-2"
-              data-testid="button-retry-history"
-            >
-              Try again
-            </Button>
+            {!error.message.includes('Authentication') && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => refetch()} 
+                className="mt-2"
+                data-testid="button-retry-history"
+              >
+                Try again
+              </Button>
+            )}
           </div>
         ) : searchHistory.length === 0 ? (
           <div className="text-center py-8">

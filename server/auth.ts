@@ -123,6 +123,21 @@ export function requireAuth(req: Request & { userId?: number }, res: Response, n
   next();
 }
 
+export function optionalAuth(req: Request & { userId?: number }, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    const decoded = verifyToken(token);
+    
+    if (decoded) {
+      req.userId = decoded.userId;
+    }
+  }
+  
+  next(); // Continue regardless of authentication status
+}
+
 // Extend Express Request interface
 declare global {
   namespace Express {

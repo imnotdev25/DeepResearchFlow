@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { storage } from "./storage";
 import { insertPaperSchema, insertSearchQuerySchema, insertUserSchema, type SearchFilters, type User } from "@shared/schema";
 import { z } from "zod";
-import { requireAuth, createUser, getUserByEmail, getUserByUsername, getUserById, verifyPassword, updateUserApiKey, generateToken } from "./auth";
+import { requireAuth, optionalAuth, createUser, getUserByEmail, getUserByUsername, getUserById, verifyPassword, updateUserApiKey, generateToken } from "./auth";
 import { generatePaperChat, testApiKey } from "./openai";
 
 const SEMANTIC_SCHOLAR_API_KEY = process.env.SEMANTIC_SCHOLAR_API_KEY || process.env.S2_API_KEY;
@@ -258,7 +258,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Search papers endpoint
-  app.post("/api/papers/search", async (req, res) => {
+  app.post("/api/papers/search", optionalAuth, async (req, res) => {
     try {
       const { query, field, year, minCitations, offset = 0, limit = 20 } = req.body;
       const userId = req.userId; // May be undefined for non-authenticated users
