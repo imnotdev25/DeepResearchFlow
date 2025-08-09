@@ -24,6 +24,10 @@ Preferred communication style: Simple, everyday language.
 ✓ Removed API key requirement from signup - moved to settings page
 ✓ Added dedicated settings page for secure API key management
 ✓ Fixed landing page routing to not show on signup page
+✓ Enhanced paper search with publication venue, H5 index, and authors' institutional backgrounds
+✓ Implemented meaningful page routing for /search, /paper/:id, /paper/:id/graph, /paper/:id/chat
+✓ Added Animated Research Journey Visualizer with D3.js timeline visualization
+✓ Fixed citation network API endpoints to properly display connected papers
 
 ## System Architecture
 

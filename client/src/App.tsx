@@ -51,6 +51,9 @@ function Router() {
       <Route path="/paper/:paperId/chat">
         {(params) => <Home defaultView="chat" selectedPaperId={params.paperId} />}
       </Route>
+      <Route path="/journey">
+        <Home defaultView="journey" />
+      </Route>
       <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>

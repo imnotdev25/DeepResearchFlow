@@ -11,7 +11,8 @@ import { PapersList } from "@/components/papers-list";
 import { GraphVisualization } from "@/components/graph-visualization";
 import { PaperDetails } from "@/components/paper-details";
 import { ChatInterface } from "@/components/chat-interface";
-import { Settings, LogOut, MessageSquare, Network, Search, BookOpen } from "lucide-react";
+import { ResearchJourneyVisualizer } from "@/components/research-journey-visualizer";
+import { Settings, LogOut, MessageSquare, Network, Search, BookOpen, TrendingUp } from "lucide-react";
 import { type Paper } from "@shared/schema";
 
 interface HomeProps {
@@ -24,7 +25,7 @@ export default function Home({ defaultView = "search", selectedPaperId }: HomePr
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [selectedPaper, setSelectedPaper] = useState<Paper | null>(null);
-  const [view, setView] = useState<"search" | "graph" | "chat">(defaultView);
+  const [view, setView] = useState<"search" | "graph" | "chat" | "journey">(defaultView as "search" | "graph" | "chat" | "journey");
   const [searchResults, setSearchResults] = useState<Paper[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
@@ -121,16 +122,19 @@ export default function Home({ defaultView = "search", selectedPaperId }: HomePr
       {/* Main Content */}
       <div className="container mx-auto px-4 py-6">
         <Tabs value={view} onValueChange={(value) => {
-          const newView = value as "search" | "graph" | "chat";
+          const newView = value as "search" | "graph" | "chat" | "journey";
           setView(newView);
           if (selectedPaper) {
             if (newView === "search") navigate(`/paper/${selectedPaper.paperId}`);
+            else if (newView === "journey") navigate('/journey');
             else navigate(`/paper/${selectedPaper.paperId}/${newView}`);
           } else if (newView === "search") {
             navigate('/search');
+          } else if (newView === "journey") {
+            navigate('/journey');
           }
         }} className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="search" className="flex items-center gap-2">
               <Search className="w-4 h-4" />
               Search Papers
@@ -142,6 +146,10 @@ export default function Home({ defaultView = "search", selectedPaperId }: HomePr
             <TabsTrigger value="chat" className="flex items-center gap-2">
               <MessageSquare className="w-4 h-4" />
               Chat
+            </TabsTrigger>
+            <TabsTrigger value="journey" className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4" />
+              Journey
             </TabsTrigger>
           </TabsList>
 
@@ -254,6 +262,26 @@ export default function Home({ defaultView = "search", selectedPaperId }: HomePr
               </Card>
             )}
           </TabsContent>
+
+          <TabsContent value="journey" className="mt-6">
+            {searchResults.length > 0 ? (
+              <ResearchJourneyVisualizer 
+                papers={searchResults} 
+                onPaperSelect={handlePaperSelect}
+              />
+            ) : (
+              <div className="text-center py-12">
+                <TrendingUp className="w-12 h-12 mx-auto mb-4 text-slate-400" />
+                <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100 mb-2">
+                  No Research Data
+                </h3>
+                <p className="text-slate-600 dark:text-slate-400">
+                  Search for papers first to see the animated research journey visualization.
+                </p>
+              </div>
+            )}
+          </TabsContent>
+
         </Tabs>
       </div>
     </div>
