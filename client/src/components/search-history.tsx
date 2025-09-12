@@ -30,22 +30,15 @@ export function SearchHistory({ onSelectSearch, isCollapsed = false }: SearchHis
   const { data: historyData, refetch, isLoading, error } = useQuery({
     queryKey: ['/api/search/history'],
     queryFn: async () => {
-      const token = localStorage.getItem('auth_token');
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
-      
       const response = await fetch('/api/search/history?limit=20', {
+        credentials: 'include', // Use session cookies
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
       
       if (!response.ok) {
         if (response.status === 401) {
-          // Token might be expired, remove it
-          localStorage.removeItem('auth_token');
           throw new Error('Authentication expired. Please log in again.');
         }
         throw new Error(`Failed to fetch search history: ${response.status}`);

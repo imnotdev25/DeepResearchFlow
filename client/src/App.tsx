@@ -38,18 +38,20 @@ function Router() {
 
   return (
     <Switch>
-      <Route path="/" component={Home} />
+      <Route path="/">
+        <Home />
+      </Route>
       <Route path="/search">
         <Home defaultView="search" />
       </Route>
       <Route path="/paper/:paperId">
-        {(params) => <Home defaultView="search" selectedPaperId={params.paperId} />}
+        {(params: { paperId: string }) => <Home defaultView="search" selectedPaperId={params.paperId} />}
       </Route>
       <Route path="/paper/:paperId/graph">
-        {(params) => <Home defaultView="graph" selectedPaperId={params.paperId} />}
+        {(params: { paperId: string }) => <Home defaultView="graph" selectedPaperId={params.paperId} />}
       </Route>
       <Route path="/paper/:paperId/chat">
-        {(params) => <Home defaultView="chat" selectedPaperId={params.paperId} />}
+        {(params: { paperId: string }) => <Home defaultView="chat" selectedPaperId={params.paperId} />}
       </Route>
       <Route path="/journey">
         <Home defaultView="journey" />

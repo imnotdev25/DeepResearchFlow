@@ -102,14 +102,46 @@ export default function SettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="flex items-center space-x-4 mb-6">
+                {user.profileImageUrl && (
+                  <img 
+                    src={user.profileImageUrl} 
+                    alt="Profile" 
+                    className="w-16 h-16 rounded-full object-cover border-2 border-slate-200 dark:border-slate-700"
+                    data-testid="img-profile-avatar"
+                  />
+                )}
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100" data-testid="text-display-name">
+                    {user.firstName && user.lastName 
+                      ? `${user.firstName} ${user.lastName}` 
+                      : user.username || 'Replit User'
+                    }
+                  </h3>
+                  <p className="text-slate-600 dark:text-slate-400" data-testid="text-email">{user.email}</p>
+                </div>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Username</Label>
-                  <Input value={user.username} disabled className="bg-slate-50 dark:bg-slate-800" />
+                  <Label>Display Name</Label>
+                  <Input 
+                    value={user.firstName && user.lastName 
+                      ? `${user.firstName} ${user.lastName}` 
+                      : user.username || 'Replit User'
+                    } 
+                    disabled 
+                    className="bg-slate-50 dark:bg-slate-800"
+                    data-testid="input-display-name"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Email</Label>
-                  <Input value={user.email} disabled className="bg-slate-50 dark:bg-slate-800" />
+                  <Input 
+                    value={user.email || ''} 
+                    disabled 
+                    className="bg-slate-50 dark:bg-slate-800"
+                    data-testid="input-email"
+                  />
                 </div>
               </div>
               <div className="flex items-center space-x-2 text-sm">

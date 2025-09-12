@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { storage } from "./storage";
 import { insertPaperSchema, insertSearchQuerySchema, insertUserSchema, type SearchFilters, type User } from "@shared/schema";
 import { z } from "zod";
-import { requireAuth, optionalAuth as jwtOptionalAuth, createUser, getUserByEmail, getUserByUsername, getUserById, verifyPassword, updateUserApiKey, generateToken } from "./auth";
+import { createUser, getUserByEmail, getUserByUsername, getUserById, verifyPassword, updateUserApiKey } from "./auth";
 import { setupAuth, isAuthenticated, optionalAuth } from "./replitAuth";
 import { generatePaperChat, testApiKey } from "./openai";
 
@@ -24,93 +24,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth middleware
   await setupAuth(app);
   
-  // Auth routes
-  app.post("/api/auth/register", async (req, res) => {
-    try {
-      const { email, username, password, openaiApiKey, openaiBaseUrl } = req.body;
-      
-      if (!email || !username || !password) {
-        return res.status(400).json({ error: "Email, username, and password are required" });
-      }
+  // Legacy JWT auth routes removed - using Replit Auth instead
 
-      // Check if user already exists
-      const existingUserByEmail = await getUserByEmail(email);
-      if (existingUserByEmail) {
-        return res.status(400).json({ error: "Email already registered" });
-      }
-
-      const existingUserByUsername = await getUserByUsername(username);
-      if (existingUserByUsername) {
-        return res.status(400).json({ error: "Username already taken" });
-      }
-
-      // Test API key if provided
-      if (openaiApiKey) {
-        const isValidKey = await testApiKey(openaiApiKey, openaiBaseUrl);
-        if (!isValidKey) {
-          return res.status(400).json({ error: "Invalid OpenAI API key" });
-        }
-      }
-
-      const user = await createUser({ email, username, password, openaiApiKey, openaiBaseUrl });
-      const token = generateToken(user.id);
-      
-      console.log('Registration successful:', { userId: user.id });
-      res.json({ 
-        user: { 
-          id: user.id, 
-          email: user.email, 
-          username: user.username,
-          hasApiKey: !!user.openaiApiKey 
-        },
-        token
-      });
-    } catch (error) {
-      console.error('Registration error:', error);
-      res.status(500).json({ error: "Registration failed" });
-    }
-  });
-
-  app.post("/api/auth/login", async (req, res) => {
-    try {
-      const { login, password } = req.body;
-      
-      if (!login || !password) {
-        return res.status(400).json({ error: "Login and password are required" });
-      }
-
-      // Try to find user by email or username
-      let user = await getUserByEmail(login);
-      if (!user) {
-        user = await getUserByUsername(login);
-      }
-
-      if (!user || !user.passwordHash || !await verifyPassword(password, user.passwordHash)) {
-        return res.status(401).json({ error: "Invalid credentials" });
-      }
-
-      const token = generateToken(user.id);
-      
-      console.log('Login successful:', { userId: user.id });
-      res.json({ 
-        user: { 
-          id: user.id, 
-          email: user.email, 
-          username: user.username,
-          hasApiKey: !!user.openaiApiKey 
-        },
-        token
-      });
-    } catch (error) {
-      console.error('Login error:', error);
-      res.status(500).json({ error: "Login failed" });
-    }
-  });
-
-  app.post("/api/auth/logout", (req, res) => {
-    // With JWT, logout is handled client-side by removing the token
-    res.json({ success: true });
-  });
 
   // Replit Auth user endpoint
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
@@ -140,25 +55,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Legacy JWT auth endpoint (for backward compatibility)
-  app.get("/api/auth/me", requireAuth, async (req, res) => {
-    try {
-      const userId = req.userId!;
-      const user = await getUserById(userId);
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
-      }
-      
-      res.json({ 
-        id: user.id, 
-        email: user.email, 
-        username: user.username,
-        hasApiKey: !!user.openaiApiKey 
-      });
-    } catch (error: any) {
-      console.error('Get user error:', error);
-      res.status(500).json({ error: "Failed to get user" });
-    }
-  });
 
   app.post("/api/auth/api-key", isAuthenticated, async (req, res) => {
     try {

@@ -17,7 +17,7 @@ import { Settings, LogOut, MessageSquare, Network, Search, BookOpen, TrendingUp 
 import { type Paper } from "@shared/schema";
 
 interface HomeProps {
-  defaultView?: "search" | "graph" | "chat";
+  defaultView?: "search" | "graph" | "chat" | "journey";
   selectedPaperId?: string;
 }
 
@@ -79,9 +79,9 @@ export default function Home({ defaultView = "search", selectedPaperId }: HomePr
       const response = await fetch("/api/papers/search", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${localStorage.getItem('auth_token')}`
+          "Content-Type": "application/json"
         },
+        credentials: 'include', // Use session cookies
         body: JSON.stringify({
           query,
           field: filters.field,

@@ -1,145 +1,84 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
 
 export interface User {
   id: number;
   email: string;
-  username: string;
+  username: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  profileImageUrl: string | null;
   hasApiKey: boolean;
+  replitSubId: string | null;
 }
-
-export interface AuthResponse {
-  user: User;
-  token: string;
-}
-
-// Token management utilities
-const TOKEN_KEY = 'auth_token';
-
-export const getToken = (): string | null => {
-  return localStorage.getItem(TOKEN_KEY);
-};
-
-export const setToken = (token: string): void => {
-  localStorage.setItem(TOKEN_KEY, token);
-};
-
-export const removeToken = (): void => {
-  localStorage.removeItem(TOKEN_KEY);
-};
 
 export function useAuth() {
   const queryClient = useQueryClient();
 
+  // Fetch user from session-based endpoint
   const { data: user, isLoading, refetch } = useQuery({
-    queryKey: ["/api/auth/me"],
+    queryKey: ["/api/auth/user"],
     retry: false,
     queryFn: async () => {
-      const token = getToken();
-      if (!token) {
-        return null; // No token available
-      }
-      
-      const response = await fetch("/api/auth/me", {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+      const response = await fetch("/api/auth/user", {
+        credentials: 'include', // Include session cookies
       });
+      
       if (response.status === 401) {
-        removeToken(); // Remove invalid token
         return null; // User not authenticated
       }
+      
       if (!response.ok) {
         throw new Error("Failed to fetch user");
       }
+      
       return response.json();
     },
   });
 
-  const loginMutation = useMutation({
-    mutationFn: async (credentials: { login: string; password: string }): Promise<AuthResponse> => {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        body: JSON.stringify(credentials),
-        headers: { "Content-Type": "application/json" },
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Login failed");
-      }
-      return response.json();
-    },
-    onSuccess: (data: AuthResponse) => {
-      setToken(data.token);
-      // Set the user data directly in the cache to avoid race conditions
-      queryClient.setQueryData(["/api/auth/me"], data.user);
-      // Also invalidate to ensure fresh data
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-    },
-  });
+  // Redirect to Replit Auth login
+  const login = () => {
+    window.location.href = "/api/login";
+  };
 
-  const registerMutation = useMutation({
-    mutationFn: async (userData: {
-      email: string;
-      username: string;
-      password: string;
-    }): Promise<AuthResponse> => {
-      const response = await fetch("/api/auth/register", {
-        method: "POST",
-        body: JSON.stringify(userData),
-        headers: { "Content-Type": "application/json" },
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Registration failed");
-      }
-      return response.json();
-    },
-    onSuccess: (data: AuthResponse) => {
-      setToken(data.token);
-      // Set the user data directly in the cache to avoid race conditions
-      queryClient.setQueryData(["/api/auth/me"], data.user);
-      // Also invalidate to ensure fresh data
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-    },
-  });
+  // No registration - handled by Replit Auth
+  const register = () => {
+    window.location.href = "/api/login";
+  };
 
+  // Session-based logout
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      // With JWT, logout is handled client-side
-      removeToken();
+      window.location.href = "/api/logout";
       return { success: true };
     },
     onSuccess: () => {
       // Clear user data from cache
-      queryClient.setQueryData(["/api/auth/me"], null);
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      queryClient.setQueryData(["/api/auth/user"], null);
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
     },
   });
 
+  // Update API key using session authentication
   const updateApiKeyMutation = useMutation({
     mutationFn: async (data: { apiKey: string; baseUrl?: string }) => {
-      const token = getToken();
-      if (!token) {
-        throw new Error("Authentication required");
-      }
-      
       const response = await fetch("/api/auth/api-key", {
         method: "POST",
         body: JSON.stringify(data),
         headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "Content-Type": "application/json"
         },
+        credentials: 'include', // Use session cookies
       });
+      
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || "Failed to update API key");
       }
+      
       return response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
     },
   });
 
@@ -147,13 +86,17 @@ export function useAuth() {
     user,
     isLoading,
     isAuthenticated: !!user,
-    login: loginMutation.mutateAsync,
-    register: registerMutation.mutateAsync,
+    login,
+    register,
     logout: logoutMutation.mutateAsync,
     updateApiKey: updateApiKeyMutation.mutateAsync,
-    isLoginLoading: loginMutation.isPending,
-    isRegisterLoading: registerMutation.isPending,
+    isLoginLoading: false, // No longer applicable - redirects immediately
+    isRegisterLoading: false, // No longer applicable - redirects immediately
     isLogoutLoading: logoutMutation.isPending,
     isApiKeyLoading: updateApiKeyMutation.isPending,
+    refetch,
   };
 }
+
+// Remove all JWT token management utilities
+// These are no longer needed with session-based auth

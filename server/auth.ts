@@ -1,12 +1,10 @@
 import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
 import { db } from './db';
 import { users, type User, type InsertUser } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
 import type { Request, Response, NextFunction } from 'express';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-jwt-secret-change-in-production';
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32);
 
 // Simple encryption for API keys
@@ -28,18 +26,6 @@ function decrypt(text: string): string {
   return decrypted;
 }
 
-export function generateToken(userId: number): string {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
-}
-
-export function verifyToken(token: string): { userId: number } | null {
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: number };
-    return decoded;
-  } catch (error) {
-    return null;
-  }
-}
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 10);
@@ -105,38 +91,6 @@ export async function getUserApiKey(userId: number): Promise<{ apiKey: string; b
   };
 }
 
-export function requireAuth(req: Request & { userId?: number }, res: Response, next: NextFunction) {
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-  
-  const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-  const decoded = verifyToken(token);
-  
-  if (!decoded) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-  
-  req.userId = decoded.userId;
-  next();
-}
-
-export function optionalAuth(req: Request & { userId?: number }, res: Response, next: NextFunction) {
-  const authHeader = req.headers.authorization;
-  
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-    const decoded = verifyToken(token);
-    
-    if (decoded) {
-      req.userId = decoded.userId;
-    }
-  }
-  
-  next(); // Continue regardless of authentication status
-}
 
 // Extend Express Request interface
 declare global {
