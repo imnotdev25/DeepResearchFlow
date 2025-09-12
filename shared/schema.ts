@@ -72,12 +72,18 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
-// User accounts table
+// User accounts table - hybrid JWT + Replit Auth support
 export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
+  id: serial("id").primaryKey(), // Keep existing serial ID for compatibility
   email: varchar("email", { length: 255 }).notNull().unique(),
-  username: varchar("username", { length: 100 }).notNull().unique(),
-  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  username: varchar("username", { length: 100 }).unique(), // Keep for legacy JWT users
+  passwordHash: varchar("password_hash", { length: 255 }), // Keep for legacy JWT users
+  // Replit Auth fields
+  replitSubId: varchar("replit_sub_id").unique(), // OIDC sub claim mapping
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
+  profileImageUrl: varchar("profile_image_url"),
+  // Shared fields
   openaiApiKey: text("openai_api_key"), // Encrypted user's OpenAI-compatible API key
   openaiBaseUrl: text("openai_base_url").default("https://api.openai.com/v1"),
   isActive: boolean("is_active").default(true),
@@ -181,9 +187,21 @@ export const insertSearchCacheSchema = createInsertSchema(searchCache).omit({
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
-  id: true,
   createdAt: true,
   updatedAt: true,
+});
+
+// Replit Auth specific user operations
+export const linkReplitSubSchema = createInsertSchema(users).pick({
+  replitSubId: true,
+});
+
+export const createReplitUserSchema = createInsertSchema(users).pick({
+  replitSubId: true,
+  email: true,
+  firstName: true,
+  lastName: true,
+  profileImageUrl: true,
 });
 
 export const insertChatSessionSchema = createInsertSchema(chatSessions).omit({
@@ -214,6 +232,8 @@ export type SearchCache = typeof searchCache.$inferSelect;
 export type InsertSearchCache = z.infer<typeof insertSearchCacheSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type LinkReplitSub = z.infer<typeof linkReplitSubSchema>;
+export type CreateReplitUser = z.infer<typeof createReplitUserSchema>;
 export type ChatSession = typeof chatSessions.$inferSelect;
 export type InsertChatSession = z.infer<typeof insertChatSessionSchema>;
 export type ChatMessage = typeof chatMessages.$inferSelect;
