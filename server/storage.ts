@@ -20,6 +20,8 @@ import {
   type PaperSearchResponse,
   type User,
   type InsertUser,
+  type LinkReplitSub,
+  type CreateReplitUser,
   type ChatSession,
   type InsertChatSession,
   type ChatMessage,
@@ -56,6 +58,11 @@ export interface IStorage {
   getUserById(id: number): Promise<User | undefined>;
   createUser(userData: InsertUser): Promise<User>;
   updateUserApiKey(userId: number, apiKey: string, baseUrl?: string): Promise<void>;
+  
+  // Replit Auth specific user operations (mandatory for Replit Auth)
+  getUserByReplitSubId(sub: string): Promise<User | undefined>;
+  linkReplitSub(userId: number, sub: string): Promise<User>;
+  upsertReplitUser(userData: CreateReplitUser): Promise<User>;
   
   // Chat operations
   createChatSession(session: InsertChatSession): Promise<ChatSession>;
@@ -243,6 +250,70 @@ export class DatabaseStorage implements IStorage {
         openaiBaseUrl: baseUrl || "https://api.openai.com/v1"
       })
       .where(eq(users.id, userId));
+  }
+
+  // Replit Auth specific user operations (mandatory for Replit Auth)
+  async getUserByReplitSubId(sub: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.replitSubId, sub));
+    return user;
+  }
+
+  async linkReplitSub(userId: number, sub: string): Promise<User> {
+    const [user] = await db.update(users)
+      .set({ replitSubId: sub })
+      .where(eq(users.id, userId))
+      .returning();
+    return user;
+  }
+
+  async upsertReplitUser(userData: CreateReplitUser): Promise<User> {
+    // First try to find existing user by replit sub ID
+    if (userData.replitSubId) {
+      const existingUser = await this.getUserByReplitSubId(userData.replitSubId);
+      if (existingUser) {
+        // Update existing user with new profile data
+        const [user] = await db.update(users)
+          .set({
+            email: userData.email,
+            firstName: userData.firstName,
+            lastName: userData.lastName,
+            profileImageUrl: userData.profileImageUrl,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.replitSubId, userData.replitSubId))
+          .returning();
+        return user;
+      }
+    }
+
+    // If verified email exists, link to existing user
+    if (userData.email) {
+      const existingUser = await this.getUserByEmail(userData.email);
+      if (existingUser && !existingUser.replitSubId) {
+        // Link Replit sub to existing user
+        const [user] = await db.update(users)
+          .set({
+            replitSubId: userData.replitSubId,
+            firstName: userData.firstName,
+            lastName: userData.lastName,
+            profileImageUrl: userData.profileImageUrl,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, existingUser.id))
+          .returning();
+        return user;
+      }
+    }
+
+    // Create new user
+    const [user] = await db.insert(users).values({
+      replitSubId: userData.replitSubId,
+      email: userData.email,
+      firstName: userData.firstName,
+      lastName: userData.lastName,
+      profileImageUrl: userData.profileImageUrl,
+    }).returning();
+    return user;
   }
 }
 
