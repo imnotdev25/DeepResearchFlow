@@ -4,7 +4,8 @@ import crypto from "crypto";
 import { storage } from "./storage";
 import { insertPaperSchema, insertSearchQuerySchema, insertUserSchema, type SearchFilters, type User } from "@shared/schema";
 import { z } from "zod";
-import { requireAuth, optionalAuth, createUser, getUserByEmail, getUserByUsername, getUserById, verifyPassword, updateUserApiKey, generateToken } from "./auth";
+import { requireAuth, optionalAuth as jwtOptionalAuth, createUser, getUserByEmail, getUserByUsername, getUserById, verifyPassword, updateUserApiKey, generateToken } from "./auth";
+import { setupAuth, isAuthenticated, optionalAuth } from "./replitAuth";
 import { generatePaperChat, testApiKey } from "./openai";
 
 const SEMANTIC_SCHOLAR_API_KEY = process.env.SEMANTIC_SCHOLAR_API_KEY || process.env.S2_API_KEY;
@@ -20,6 +21,8 @@ function generateCacheHash(query: string, field?: string, year?: number, minCita
 const CACHE_EXPIRATION_HOURS = 1;
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Setup Replit Auth middleware
+  await setupAuth(app);
   
   // Auth routes
   app.post("/api/auth/register", async (req, res) => {
@@ -82,7 +85,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         user = await getUserByUsername(login);
       }
 
-      if (!user || !await verifyPassword(password, user.passwordHash)) {
+      if (!user || !user.passwordHash || !await verifyPassword(password, user.passwordHash)) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
 
@@ -109,6 +112,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ success: true });
   });
 
+  // Replit Auth user endpoint
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+    try {
+      const user = req.user?.dbUser;
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      // Return sanitized user data (exclude sensitive fields)
+      const sanitizedUser = {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        profileImageUrl: user.profileImageUrl,
+        hasApiKey: !!user.openaiApiKey,
+        isActive: user.isActive,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt
+      };
+      
+      res.json(sanitizedUser);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // Legacy JWT auth endpoint (for backward compatibility)
   app.get("/api/auth/me", requireAuth, async (req, res) => {
     try {
       const userId = req.userId!;
@@ -129,7 +160,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/auth/api-key", requireAuth, async (req, res) => {
+  app.post("/api/auth/api-key", isAuthenticated, async (req, res) => {
     try {
       const { apiKey, baseUrl } = req.body;
       const userId = req.userId!;
@@ -152,7 +183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Chat routes
-  app.post("/api/chat/session", requireAuth, async (req, res) => {
+  app.post("/api/chat/session", isAuthenticated, async (req, res) => {
     try {
       const { paperId, title } = req.body;
       const userId = req.userId!;
@@ -174,7 +205,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/chat/sessions", requireAuth, async (req, res) => {
+  app.get("/api/chat/sessions", isAuthenticated, async (req, res) => {
     try {
       const userId = req.userId!;
       const sessions = await storage.getUserChatSessions(userId);
@@ -185,7 +216,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/chat/session/:sessionId/messages", requireAuth, async (req, res) => {
+  app.get("/api/chat/session/:sessionId/messages", isAuthenticated, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const userId = req.userId!;
@@ -204,7 +235,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/chat/session/:sessionId/message", requireAuth, async (req, res) => {
+  app.post("/api/chat/session/:sessionId/message", isAuthenticated, async (req, res) => {
     try {
       const sessionId = parseInt(req.params.sessionId);
       const userId = req.userId!;
@@ -443,7 +474,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get search history
-  app.get("/api/search/history", requireAuth, async (req, res) => {
+  app.get("/api/search/history", isAuthenticated, async (req, res) => {
     try {
       const userId = req.userId!;
       const limit = parseInt(req.query.limit as string) || 10;
