@@ -15,6 +15,9 @@ interface GraphVisualizationProps {
 interface GraphNode extends d3.SimulationNodeDatum {
   id: string;
   paper: Paper;
+  year: number;
+  citations: number;
+  authorLastName: string;
   x?: number;
   y?: number;
 }
@@ -61,31 +64,49 @@ export function GraphVisualization({
 
         // Build graph data
         const nodes: GraphNode[] = [
-          { id: mainPaper.paperId, paper: mainPaper }
+          { 
+            id: mainPaper.paperId, 
+            paper: mainPaper,
+            year: mainPaper.year || new Date().getFullYear(),
+            citations: mainPaper.citationCount || 0,
+            authorLastName: mainPaper.authors?.[0]?.name?.split(' ').pop() || 'Unknown'
+          }
         ];
         
         const links: GraphLink[] = [];
 
-        // Add citation nodes and links (papers that cite this one)
+        // Add citation nodes (papers that cite this one)
         citations.papers?.slice(0, maxCitations).forEach((paper: Paper) => {
           if (paper && paper.paperId) {
-            nodes.push({ id: paper.paperId, paper });
-            links.push({ source: paper.paperId, target: mainPaper.paperId, type: 'citation' });
+            nodes.push({ 
+              id: paper.paperId, 
+              paper,
+              year: paper.year || new Date().getFullYear(),
+              citations: paper.citationCount || 0,
+              authorLastName: paper.authors?.[0]?.name?.split(' ').pop() || 'Unknown'
+            });
+            // Remove link creation for bubble layout
           }
         });
 
-        // Add reference nodes and links (papers this one references)
+        // Add reference nodes (papers this one references)
         references.papers?.slice(0, maxReferences).forEach((paper: Paper) => {
           if (paper && paper.paperId) {
-            nodes.push({ id: paper.paperId, paper });
-            links.push({ source: mainPaper.paperId, target: paper.paperId, type: 'reference' });
+            nodes.push({ 
+              id: paper.paperId, 
+              paper,
+              year: paper.year || new Date().getFullYear(),
+              citations: paper.citationCount || 0,
+              authorLastName: paper.authors?.[0]?.name?.split(' ').pop() || 'Unknown'
+            });
+            // Remove link creation for bubble layout
           }
         });
 
         console.log(`Graph data: ${nodes.length} nodes, ${links.length} links`);
         console.log('Citations:', citations.papers?.length || 0, 'References:', references.papers?.length || 0);
 
-        setGraphData({ nodes, links });
+        setGraphData({ nodes, links: [] }); // No links needed for bubble layout
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load citation data');
       } finally {
@@ -120,79 +141,104 @@ export function GraphVisualization({
     // Create main group for zoomable content
     const g = svg.append("g");
 
-    // Create simulation
+    // Create bubble scales
+    const minYear = d3.min(graphData.nodes, d => d.year) || 1997;
+    const maxYear = d3.max(graphData.nodes, d => d.year) || 2024;
+    const maxCitations = d3.max(graphData.nodes, d => d.citations) || 1;
+    
+    // Radius scale based on citation count
+    const radiusScale = d3.scaleSqrt()
+      .domain([0, maxCitations])
+      .range([10, 40]);
+    
+    // Color scale based on year
+    const colorScale = d3.scaleSequential(d3.interpolateTurbo)
+      .domain([minYear, maxYear]);
+    
+    // X position scale based on year for temporal clustering
+    const xScale = d3.scaleLinear()
+      .domain([minYear, maxYear])
+      .range([100, width - 100]);
+
+    // Create bubble simulation (no links)
     const simulation = d3.forceSimulation<GraphNode>(graphData.nodes)
-      .force("link", d3.forceLink<GraphNode, GraphLink>(graphData.links).id(d => d.id))
-      .force("charge", d3.forceManyBody().strength(-300))
-      .force("center", d3.forceCenter(width / 2, height / 2));
+      .force("x", d3.forceX(d => xScale(d.year)).strength(0.1))
+      .force("y", d3.forceY(height / 2).strength(0.05))
+      .force("charge", d3.forceManyBody().strength(-10))
+      .force("collide", d3.forceCollide(d => radiusScale(d.citations) * 0.9));
 
     simulationRef.current = simulation;
 
-    // Create links
-    const link = g.append("g")
-      .attr("stroke", "#999")
-      .attr("stroke-opacity", 0.6)
-      .selectAll("line")
-      .data(graphData.links)
-      .join("line")
-      .attr("stroke-width", 2)
-      .attr("stroke", d => d.type === 'citation' ? '#ef4444' : '#3b82f6');
-
-    // Create nodes
-    const node = g.append("g")
-      .selectAll("circle")
+    // Create bubble nodes as groups containing circle and text
+    const nodeGroups = g.append("g")
+      .selectAll("g")
       .data(graphData.nodes)
-      .join("circle")
-      .attr("r", d => d.paper.paperId === paperId ? 20 : 12)
-      .attr("fill", d => d.paper.paperId === paperId ? '#3b82f6' : '#64748b')
-      .attr("stroke", d => d.paper.paperId === paperId ? '#1d4ed8' : '#475569')
-      .attr("stroke-width", 2)
+      .join("g")
+      .attr("class", "bubble-node")
       .style("cursor", "pointer")
       .on("click", (event, d) => {
         event.stopPropagation();
         onNodeClick(d.paper);
       });
 
-    // Add drag behavior
-    node.call(d3.drag<any, GraphNode>()
+    // Create bubble circles
+    const circles = nodeGroups.append("circle")
+      .attr("r", d => radiusScale(d.citations))
+      .attr("fill", d => d.year ? colorScale(d.year) : '#6b7280')
+      .attr("fill-opacity", 0.6)
+      .attr("stroke", d => d3.color(d.year ? colorScale(d.year) : '#6b7280')?.darker(1).toString() || '#374151')
+      .attr("stroke-width", 1.5)
+      .attr("data-testid", d => `bubble-${d.id}`);
+
+    // Add drag behavior to node groups
+    nodeGroups.call(d3.drag<any, GraphNode>()
       .on("start", dragstarted)
       .on("drag", dragged)
       .on("end", dragended));
 
-    // Add labels
-    const labels = g.append("g")
-      .selectAll("text")
-      .data(graphData.nodes)
-      .join("text")
-      .text(d => d.paper.title.length > 30 ? d.paper.title.substring(0, 30) + "..." : d.paper.title)
-      .attr("font-size", 10)
+    // Add author labels
+    const authorLabels = nodeGroups.append("text")
+      .text(d => d.authorLastName)
       .attr("text-anchor", "middle")
-      .attr("dy", -25)
+      .attr("dy", "-0.1em")
+      .attr("font-size", d => Math.max(8, Math.min(14, radiusScale(d.citations) * 0.4)))
+      .attr("font-weight", "600")
+      .attr("fill", "white")
+      .attr("stroke", "#000")
+      .attr("stroke-width", 0.5)
       .style("pointer-events", "none")
-      .style("fill", "#374151");
+      .attr("data-testid", d => `author-label-${d.id}`);
+
+    // Add year labels
+    const yearLabels = nodeGroups.append("text")
+      .text(d => d.year)
+      .attr("text-anchor", "middle")
+      .attr("dy", "1.2em")
+      .attr("font-size", d => Math.max(7, Math.min(12, radiusScale(d.citations) * 0.3)))
+      .attr("font-weight", "400")
+      .attr("fill", "white")
+      .attr("stroke", "#000")
+      .attr("stroke-width", 0.3)
+      .style("pointer-events", "none")
+      .attr("data-testid", d => `year-label-${d.id}`);
 
     // Add hover effects
-    node.on("mouseenter", function(event, d) {
-      d3.select(this).attr("r", d.paper.paperId === paperId ? 24 : 16);
+    nodeGroups.on("mouseenter", function(event, d) {
+      d3.select(this).select("circle")
+        .transition().duration(200)
+        .attr("r", radiusScale(d.citations) * 1.1)
+        .attr("fill-opacity", 0.8);
     }).on("mouseleave", function(event, d) {
-      d3.select(this).attr("r", d.paper.paperId === paperId ? 20 : 12);
+      d3.select(this).select("circle")
+        .transition().duration(200)
+        .attr("r", radiusScale(d.citations))
+        .attr("fill-opacity", 0.6);
     });
 
     // Update positions on tick
     simulation.on("tick", () => {
-      link
-        .attr("x1", d => (d.source as GraphNode).x!)
-        .attr("y1", d => (d.source as GraphNode).y!)
-        .attr("x2", d => (d.target as GraphNode).x!)
-        .attr("y2", d => (d.target as GraphNode).y!);
-
-      node
-        .attr("cx", d => d.x!)
-        .attr("cy", d => d.y!);
-
-      labels
-        .attr("x", d => d.x!)
-        .attr("y", d => d.y!);
+      nodeGroups
+        .attr("transform", d => `translate(${d.x!},${d.y!})`);
     });
 
     // Drag functions
@@ -212,6 +258,102 @@ export function GraphVisualization({
       event.subject.fx = null;
       event.subject.fy = null;
     }
+
+    // Add legends
+    const legendContainer = svg.append("g")
+      .attr("class", "legends")
+      .attr("transform", `translate(20, ${height - 100})`);
+
+    // Color legend (years)
+    const colorLegend = legendContainer.append("g")
+      .attr("class", "color-legend")
+      .attr("data-testid", "color-legend");
+
+    const legendWidth = 200;
+    const legendHeight = 10;
+    
+    // Create gradient for color legend
+    const gradient = svg.append("defs")
+      .append("linearGradient")
+      .attr("id", "year-gradient")
+      .attr("x1", "0%")
+      .attr("x2", "100%");
+    
+    const numStops = 10;
+    for (let i = 0; i <= numStops; i++) {
+      const t = i / numStops;
+      const year = minYear + t * (maxYear - minYear);
+      gradient.append("stop")
+        .attr("offset", `${t * 100}%`)
+        .attr("stop-color", colorScale(year));
+    }
+    
+    colorLegend.append("rect")
+      .attr("width", legendWidth)
+      .attr("height", legendHeight)
+      .style("fill", "url(#year-gradient)");
+    
+    colorLegend.append("text")
+      .attr("x", 0)
+      .attr("y", legendHeight + 15)
+      .attr("font-size", 12)
+      .attr("fill", "#374151")
+      .text(minYear.toString());
+    
+    colorLegend.append("text")
+      .attr("x", legendWidth)
+      .attr("y", legendHeight + 15)
+      .attr("text-anchor", "end")
+      .attr("font-size", 12)
+      .attr("fill", "#374151")
+      .text(maxYear.toString());
+    
+    colorLegend.append("text")
+      .attr("x", legendWidth / 2)
+      .attr("y", -5)
+      .attr("text-anchor", "middle")
+      .attr("font-size", 12)
+      .attr("font-weight", "600")
+      .attr("fill", "#374151")
+      .text("Publication Year");
+
+    // Size legend (citations)
+    const sizeLegend = legendContainer.append("g")
+      .attr("class", "size-legend")
+      .attr("transform", `translate(${legendWidth + 60}, 0)`)
+      .attr("data-testid", "size-legend");
+    
+    const sizeSteps = [0, Math.floor(maxCitations * 0.25), Math.floor(maxCitations * 0.5), maxCitations];
+    
+    sizeLegend.append("text")
+      .attr("x", 50)
+      .attr("y", -5)
+      .attr("text-anchor", "middle")
+      .attr("font-size", 12)
+      .attr("font-weight", "600")
+      .attr("fill", "#374151")
+      .text("Citation Count");
+    
+    sizeSteps.forEach((count, i) => {
+      const radius = radiusScale(count);
+      const y = legendHeight + radius + i * 20;
+      
+      sizeLegend.append("circle")
+        .attr("cx", 25)
+        .attr("cy", y)
+        .attr("r", radius)
+        .attr("fill", "#6b7280")
+        .attr("fill-opacity", 0.6)
+        .attr("stroke", "#374151")
+        .attr("stroke-width", 1);
+      
+      sizeLegend.append("text")
+        .attr("x", 55)
+        .attr("y", y + 4)
+        .attr("font-size", 10)
+        .attr("fill", "#374151")
+        .text(`${count} citations`);
+    });
 
     return () => {
       simulation.stop();
@@ -305,10 +447,10 @@ export function GraphVisualization({
       </div>
 
       {/* Graph Info */}
-      <div className="mt-4 text-sm text-slate-600 dark:text-slate-400 text-center">
-        Interactive citation network (showing top {maxCitations} citations, {maxReferences} references)
+      <div className="mt-4 text-sm text-slate-600 dark:text-slate-400 text-center" data-testid="graph-info">
+        Interactive bubble citation network (showing top {maxCitations} citations, {maxReferences} references)
         <br />
-        <span className="text-blue-600">Blue lines:</span> References • <span className="text-red-600">Red lines:</span> Citations • <span className="font-medium">Drag nodes</span> to explore
+        <span className="font-medium">Bubble size:</span> Citation count • <span className="font-medium">Color:</span> Publication year • <span className="font-medium">Drag bubbles</span> to explore
       </div>
     </div>
   );
